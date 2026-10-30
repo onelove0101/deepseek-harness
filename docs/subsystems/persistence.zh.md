@@ -420,6 +420,24 @@ abstract stat(id: SessionId, options?: SessionPersistenceStatOptions): Promise<S
  * @returns one snapshot per stored session.
  */
 abstract list(options?: SessionPersistenceListOptions): Promise<readonly SessionPersistenceSnapshot[]>
+
+/**
+ * Permanently erase one stored session: its header, every event, and every
+ * historical generation. This is an explicit user action, distinct from
+ * format migration, which never removes a committed generation.
+ *
+ * Rejects while any write handle exists for the id (in this process, in
+ * another process, or a created-but-unmaterialized session). Read handles
+ * do not block deletion; a read started afterwards observes the session as
+ * absent. Once this resolves, `stat` returns `undefined` and `list` omits
+ * the session.
+ * @param id - the stored session to erase.
+ * @param options - optional cancellation.
+ * @returns resolution once the session is no longer observable.
+ * @throws {SessionPersistenceNotFoundError} when the session does not exist.
+ * @throws {SessionAlreadyOwnedError} when a write handle holds the session.
+ */
+abstract delete(id: SessionId, options?: SessionPersistenceDeleteOptions): Promise<void>
 ```
 
 Types: [SessionId](core.zh.md)

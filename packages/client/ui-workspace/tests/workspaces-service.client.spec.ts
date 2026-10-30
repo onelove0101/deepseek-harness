@@ -139,6 +139,7 @@ class FakeSessions implements ISessions {
   readonly list: MutableSource<SessionListState>
   readonly create: ReturnType<typeof vi.fn<ISessions['create']>>
   readonly fork = vi.fn<ISessions['fork']>(async () => sid('forked'))
+  readonly deleteSession = vi.fn<ISessions['deleteSession']>(async () => {})
   readonly retained: RetainedSession[] = []
   readonly refreshProjections = vi.fn<ISessions['refreshProjections']>(() => Promise.resolve())
   readonly retain = vi.fn<ISessions['retain']>((target) => {
@@ -1535,6 +1536,17 @@ describe('UiWorkspaceService', () => {
     b.workspaces.onUnarchive = () => Promise.reject(new Error('unarchive rejected'))
     await expect(b.uiWorkspace.unarchiveSession(idle)).rejects.toThrow('unarchive rejected')
     expect(b.workspaces.unarchiveCalls).toEqual([idle, idle])
+  })
+
+  it('forwards session deletion to the Session service and preserves failures', async () => {
+    const idle = sid('idle')
+    const b = bench()
+
+    await b.uiWorkspace.deleteSession(idle)
+    expect(b.sessions.deleteSession).toHaveBeenCalledWith(idle)
+
+    b.sessions.deleteSession.mockRejectedValueOnce(new Error('delete rejected'))
+    await expect(b.uiWorkspace.deleteSession(idle)).rejects.toThrow('delete rejected')
   })
 
   it('passes directory operations to the Host and preserves structured browse failures', async () => {

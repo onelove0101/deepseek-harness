@@ -211,6 +211,8 @@ interface SkillLookupOptions {
 interface SkillViewOptions extends SkillLookupOptions {
   /** Viewing scope (the calling agent); omitted reads the global layer alone. */
   readonly scope?: ScopeKey | undefined
+  /** When true, names hidden through {@link SkillRegistry.setHiddenNames} stay visible; settings pages use it to list disabled skills. */
+  readonly includeHidden?: boolean
 }
 ```
 
@@ -236,6 +238,12 @@ The model-facing `skill({ name })` tool validates the kebab-case name, finds the
 
 `SkillListRequest` addresses one Session by `sessionId`; `SkillListValue` returns the user-invocable entries with name, description, optional usage guidance, and model-invocation availability. `SessionSkillCatalog` reads the Session cwd and recorded preset without activating an Agent. A live Agent may supply its scoped registry, while a cold Session uses the preset's standing scope.
 
+## User-managed skills
+
+The Settings **Skills** page manages skills through the `skills` Remote and the `skills` settings namespace (`disabled`, `dirs`), both owned by `SessionSkillCatalog`. `inventory` lists every skill visible without a workspace, including disabled ones, with an `enabled` flag; `add` accepts an absolute directory that holds `SKILL.md`, appends it to `dirs`, and rolls the write back when the provider does not report a valid skill from that directory. A `user-added` `FileSystemSkillProvider` reads `dirs` on every lookup through its `singleSkillDirs` option, where each directory is one skill at the `custom` rank, and the host calls `control.invalidate()` when the list changes.
+
+`disabled` is applied by `SkillRegistry.setHiddenNames()`. `snapshot()`, `list()`, and `get()` drop hidden names after discovery and before returning, so the model catalog, the `skill` tool, `/name` invocation, and the `/` menu all agree, and a lower-ranked skill of the same name does not replace the hidden one. A caller passes `includeHidden` to see them, as the inventory does. The source is read per lookup, so toggling needs no cache rebuild; the owner calls `notifyHiddenChanged()` to emit `skills/change`.
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>
@@ -251,6 +259,25 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 Host service backing `ctx.remote.skills` without activating a cold Agent.
 
 ```ts cordis-catalog
+/**
+ * List every skill of the host composition, including skills the user disabled.
+ * @param request - optional workspace directory whose project skill roots are included.
+ * @param signal - caller lifetime carried by the Remote transport.
+ * @returns skills sorted by name with their enabled state.
+ * @throws RemoteError when no skill registry is mounted or discovery fails.
+ */
+@Remote async inventory(request: SkillInventoryRequest, signal: AbortSignal): Promise<SkillInventoryValue>
+
+/**
+ * Register a directory that contains `SKILL.md` as a user-added skill.
+ * @param request - absolute directory path.
+ * @param signal - caller lifetime carried by the Remote transport.
+ * @returns the inventory after the directory was added.
+ * @throws RemoteError when settings are unavailable, the path is not an absolute directory with a valid
+ *   `SKILL.md`, or the directory is already registered.
+ */
+@Remote async add(request: SkillAddRequest, signal: AbortSignal): Promise<SkillInventoryValue>
+
 /**
  * List the user-invocable skills visible to one Session composition.
  * @param request - Session identity whose cwd and preset select the catalog view.
@@ -282,6 +309,19 @@ Layered registry of skill providers, the host+per-scope shape the tools registry
  *   composite effects may yield it directly to preserve teardown ordering.
  */
 registerProvider(create: (control: SkillProviderControl) => SkillProvider): () => void
+
+/**
+ * Hide skills by name from `snapshot()`, `list()`, and `get()` unless the caller passes
+ * `includeHidden`. The hidden name removes the winning entry itself, so a lower-ranked
+ * same-name skill does not resurface. The source is read per lookup; call
+ * {@link SkillRegistry.notifyHiddenChanged} after its answer changes.
+ * @param source - returns the current hidden names.
+ * @returns a disposer that restores the previous (empty) source.
+ */
+setHiddenNames(source: () => ReadonlySet<string>): () => void
+
+/** Emit `skills/change` after the hidden-name source changed its answer. */
+notifyHiddenChanged(): void
 
 /**
  * Register a borrowed readonly runtime skill into the calling context's

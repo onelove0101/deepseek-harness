@@ -10,7 +10,9 @@ import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import type { DomainChanged } from '@deepseek-ai/dsh-storage-domain'
 import SessionStore, { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionHeader } from '@deepseek-ai/dsh-session'
-import { SessionPersistenceRevision } from '@deepseek-ai/dsh-session-persistence'
+import {
+  SessionAlreadyOwnedError, SessionPersistenceNotFoundError, SessionPersistenceRevision,
+} from '@deepseek-ai/dsh-session-persistence'
 import type { SessionPersistenceSnapshot } from '@deepseek-ai/dsh-session-persistence'
 import { MemoryMediaPool, MemoryStorageBackend } from '../../../storage/storage-domain/tests/helpers/memory-backend.ts'
 import WorkspaceRegistry, {
@@ -18,6 +20,7 @@ import WorkspaceRegistry, {
   type workspaceDomainState,
   WorkspaceMoveInvalidError,
   WorkspaceOrderInvalidError,
+  WorkspaceUnknownSessionError,
 } from '../src/index.ts'
 import type { WorkspaceDomainState, WorkspaceRecord } from '../src/index.ts'
 import { defaultWorkspaceTitle, fullyQualifiedWorkspacePath } from '../src/paths.ts'
@@ -56,7 +59,10 @@ async function harness(options: HarnessOptions = {}) {
     listed.map(header => ({ header, revision: SessionPersistenceRevision(`rev-${header.id}`) })))
   const open = vi.fn(() => { throw new Error('event bodies must not be opened') })
   const stat = vi.fn(() => { throw new Error('per-session stat must not be needed') })
-  ctx.provide('sessionPersistence', { list, open, stat } as never)
+  const remove = vi.fn(async (id: SessionId): Promise<void> => {
+    listed = listed.filter(header => header.id !== id)
+  })
+  ctx.provide('sessionPersistence', { list, open, stat, delete: remove } as never)
 
   if (options.sessionStore === true) {
     await ctx.plugin(SessionStore)
@@ -83,6 +89,7 @@ async function harness(options: HarnessOptions = {}) {
     list,
     open,
     stat,
+    remove,
     setSessions: (headers: SessionHeader[]) => { listed = headers },
   }
 }
@@ -1201,6 +1208,46 @@ describe('registry-global session archive', () => {
     )
     const upgraded = await harness({ pool: legacy })
     expect(upgraded.registry.archivedSessionIds).toEqual([])
+  })
+})
+
+describe('permanent session deletion', () => {
+  it('erases the stored session, then scrubs the archive set, membership, and header caches', async () => {
+    const dir = await makeDir('delete-session')
+    const result = await harness({ sessions: [header('keep', dir, 100), header('gone', dir, 200)] })
+    const workspace = result.registry.list()[0]!
+    await result.registry.archiveSession(SessionId('gone'))
+
+    await result.registry.deleteSession(SessionId('gone'))
+
+    expect(result.remove).toHaveBeenCalledWith('gone')
+    expect(result.registry.archivedSessionIds).toEqual([])
+    expect(workspace.sessionIds).toEqual(['keep'])
+    expect(storedState(result.pool).archivedSessionIds).toEqual([])
+    await expect(result.registry.archiveSession(SessionId('gone'))).rejects.toBeInstanceOf(WorkspaceUnknownSessionError)
+  })
+
+  it('scrubs the registry when persistence no longer holds the session', async () => {
+    const dir = await makeDir('delete-vanished')
+    const result = await harness({ sessions: [header('vanished', dir, 100)] })
+    await result.registry.archiveSession(SessionId('vanished'))
+    result.remove.mockRejectedValueOnce(new SessionPersistenceNotFoundError(SessionId('vanished')))
+
+    await result.registry.deleteSession(SessionId('vanished'))
+
+    expect(result.registry.archivedSessionIds).toEqual([])
+  })
+
+  it('keeps every registry reference when persistence refuses the delete', async () => {
+    const dir = await makeDir('delete-refused')
+    const result = await harness({ sessions: [header('busy', dir, 100)] })
+    await result.registry.archiveSession(SessionId('busy'))
+    result.remove.mockRejectedValueOnce(new SessionAlreadyOwnedError(SessionId('busy')))
+
+    await expect(result.registry.deleteSession(SessionId('busy'))).rejects.toBeInstanceOf(SessionAlreadyOwnedError)
+
+    expect(result.registry.archivedSessionIds).toEqual(['busy'])
+    expect(result.registry.list()[0]!.sessionIds).toEqual(['busy'])
   })
 })
 

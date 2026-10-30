@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, stat } from 'node:fs/promises'
 import { Context, Service } from '@deepseek-ai/cordis'
 import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
-import type {} from '@deepseek-ai/dsh-session-persistence'
+import { SessionPersistenceNotFoundError } from '@deepseek-ai/dsh-session-persistence'
 import type { DomainGlobal, KvTable } from '@deepseek-ai/dsh-storage-domain'
 import { WorkspaceEntity } from './entity.ts'
 import type { WorkspaceEntityHost } from './entity.ts'
@@ -462,6 +462,41 @@ export class WorkspaceRegistry extends Service {
         ...state,
         pinnedSessionIds: state.pinnedSessionIds.filter(id => id !== sessionId),
       })
+    })
+  }
+
+  /**
+   * Permanently delete one session: erase its stored log through
+   * `sessionPersistence.delete`, then drop every registry reference to it
+   * (archive set, pin set, workspace membership, header and path caches). Persistence
+   * is erased first, so a failure there leaves the session and its registry
+   * entries untouched; a failure while scrubbing leaves only orphan ids that
+   * the membership filter already ignores. A session persistence no longer
+   * holds still has its registry references scrubbed.
+   * @param sessionId - The session to delete.
+   * @returns resolution after the registry no longer references the session.
+   * @throws {SessionAlreadyOwnedError} when a live handle holds the session.
+   */
+  deleteSession(sessionId: SessionId): Promise<void> {
+    return this.enqueueOperation(async () => {
+      try {
+        await this.ctx.sessionPersistence.delete(sessionId)
+      } catch (error) {
+        if (!(error instanceof SessionPersistenceNotFoundError)) throw error
+      }
+      for (const entity of this.entities.values()) await entity.detachSession(sessionId)
+      this.headers.delete(sessionId)
+      this.sessionPaths.delete(sessionId)
+      this.invalidSessionPaths.delete(sessionId)
+      const state = this.requireState()
+      const archivedSessionIds = state.archivedSessionIds.filter(id => id !== sessionId)
+      const pinnedSessionIds = state.pinnedSessionIds.filter(id => id !== sessionId)
+      if (
+        archivedSessionIds.length !== state.archivedSessionIds.length
+        || pinnedSessionIds.length !== state.pinnedSessionIds.length
+      ) {
+        await this.setState({ ...state, archivedSessionIds, pinnedSessionIds })
+      }
     })
   }
 

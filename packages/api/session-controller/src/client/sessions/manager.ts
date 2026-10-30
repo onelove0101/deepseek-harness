@@ -678,6 +678,21 @@ export class SessionManager {
   }
 
   /**
+   * Permanently delete one Session on the Host and, on success, drop it from
+   * the local list even when it was a durable subagent.
+   * @param sessionId - Session to delete.
+   * @returns the Host acknowledgement or a business/transport error.
+   */
+  async deleteSession(sessionId: SessionId): Promise<RemoteResult<{ sessionId: SessionId }>> {
+    const result = await this.remote.session.deleteSession({ sessionId })
+    if (result.ok) {
+      this.handleSessionRemoved(sessionId)
+      this.recordMutation({ kind: 'remove', sessionId })
+    }
+    return result
+  }
+
+  /**
    * Apply one Session removal forwarded through `ctx.remote.$on`.
    * @param sessionId - removed Session identity.
    */

@@ -590,6 +590,22 @@ describe('SessionProjectionCache listing read', () => {
       .toEqual({ asOfSeq: -1, values: { 'cache-test/marks': { marks: [] } } })
   })
 
+  it('forget drops a stored record and tolerates an absent id', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-projcache-'))
+    roots.push(root)
+    await seedRecord(root, 'forgotten', {
+      'cache-test/marks': { ver: 1, seq: SessionSeq(2), val: { marks: ['primary'] } },
+    })
+    const { cache } = await harness({ root })
+    expect(cache.cachedSnapshot(headerOf(SessionId('forgotten')))).toBeDefined()
+
+    await cache.forget(SessionId('forgotten'))
+    await cache.forget(SessionId('never-stored'))
+
+    expect(cache.cachedSnapshot(headerOf(SessionId('forgotten')))).toBeUndefined()
+    await expect(readFile(recordPath(root, SessionId('forgotten')), 'utf8')).rejects.toThrow()
+  })
+
   it('refuses a checkpoint folded from another Session format generation', async () => {
     const root = await mkdtemp(join(tmpdir(), 'dsh-projcache-'))
     roots.push(root)

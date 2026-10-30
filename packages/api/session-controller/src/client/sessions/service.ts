@@ -391,6 +391,14 @@ export class ClientSessions implements ISessions {
     this.manager.handleSessionAdded(summary)
   }
 
+  async deleteSession(sessionId: SessionId): Promise<void> {
+    const result = await this.manager.deleteSession(sessionId)
+    if (!result.ok) {
+      throw new Error(`session delete failed: ${result.error.code}: ${result.error.message}`)
+    }
+    this.projectList()
+  }
+
   /**
    * Apply one remotely forwarded Session removal.
    * @param sessionId - removed Session identity.

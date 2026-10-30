@@ -55,6 +55,10 @@ Default roots are scanned in this provider's rank order:
 
 The project root is the nearest ancestor containing `.git`; without one, the current cwd is used. The user DSH root skips its `.system` child. `includeDefaultRoots: false` omits the project and user rows plus the `$DSH_BUNDLED_SKILL_DIR` default so an isolated provider sees only its own configured roots; `bundledSkillDir` adds a bundled root at rank 600.
 
+### Single-skill directories
+
+`new FileSystemSkillProvider(ctx, control, config, { singleSkillDirs })` also accepts a function returning directories that each hold one skill (`<dir>/SKILL.md`). They rank as `custom`, and the function is read on every lookup, so an owner that changes the list calls `control.invalidate()`. The session controller uses this for the directories users add on the Skills Settings page.
+
 ### Mount and configure
 
 Load the plugin alongside the skill registry; it requires `ctx.skills`.

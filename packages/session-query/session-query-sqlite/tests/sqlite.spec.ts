@@ -171,6 +171,11 @@ class TestPersistence extends SessionPersistence {
   }
 
   // Appends are durable on resolution here; nothing buffers, so the service-wide flush is a no-op.
+  async delete(id: SessionIdType): Promise<void> {
+    TestPersistence.entries.delete(id)
+    TestPersistence.revisions.delete(id)
+  }
+
   async flush(): Promise<void> {}
 
   open(id: SessionIdType, access: SessionAccess): Promise<SessionHandle> {

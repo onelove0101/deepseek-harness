@@ -61,6 +61,10 @@ An invocation policy on every skill decides which surfaces may advertise and loa
 | `{ modelInvocable: false, userInvocable: true }` | excluded | included |
 | `{ modelInvocable: false, userInvocable: false }` | excluded | excluded |
 
+### Hiding skills by name
+
+`ctx.skills.setHiddenNames(source)` makes `snapshot()`, `list()`, and `get()` omit the names the source returns, after discovery and before the result is returned; a lower-ranked skill of the same name does not take its place. A caller passes `includeHidden: true` to see them. The source is read on every lookup, so the owner only calls `notifyHiddenChanged()` to emit `skills/change` after its answer changes. The Skills Settings page uses this to disable a skill for the model, the `skill` tool, and the `/` menu.
+
 ### Observable success and failures
 
 A skill that any provider reports appears in the merged catalog, and loading it by its exact kebab-case name returns the body; an invalid name returns no skill rather than throwing. A provider that fails discovery is logged and skipped, and the observation is reported incomplete so consumers can distinguish failed discovery from confirmed absence; an explicit incomplete observation still contributes its candidates. A malformed candidate fails fast — the registry validates names, descriptions, invocation booleans, and provider ownership before caching or returning anything.

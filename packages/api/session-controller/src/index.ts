@@ -54,6 +54,8 @@ import type {
   SessionProjectionFrame, SessionStateRequest, SessionState, SessionWaitRequest, SessionWaitValue,
   SessionPromptRequest,
   SessionPromptValue,
+  SessionDeleteRequest,
+  SessionDeleteValue,
   SessionRenameRequest,
   SessionRenameValue,
   SessionSearchRequest,
@@ -433,6 +435,16 @@ export class SessionController extends TypertRemoteService {
   @Remote('rename')
   rename(request: SessionRenameRequest): Promise<SessionRenameValue> {
     return this.commands.rename(request)
+  }
+
+  /**
+   * Permanently delete one inactive Session and its stored log.
+   * @param request - Session identity.
+   * @returns acknowledgement after the Session is erased.
+   */
+  @Remote('deleteSession')
+  deleteSession(request: SessionDeleteRequest): Promise<SessionDeleteValue> {
+    return this.commands.deleteSession(request)
   }
 
   /**

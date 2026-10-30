@@ -1,0 +1,19 @@
+{
+  "name": "skill-injector-plugin",
+  "version": "0.1.0",
+  "description": "DSH plugin that reads user-configured external skill paths from settings, registers them as standard skills, and auto-loads their full instructions into agent memory at the start of each new session.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "cordis.patch.yml"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

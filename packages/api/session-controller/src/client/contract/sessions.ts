@@ -141,6 +141,12 @@ export interface ISessions {
     allowMigration?: boolean
   }): Promise<SessionId>
   /**
+   * Permanently delete a stored session and drop it from the list store.
+   * @param sessionId - session to delete; it must not be active on the Host.
+   * @throws when the Host refuses (active, unknown) or the call fails.
+   */
+  deleteSession(sessionId: SessionId): Promise<void>
+  /**
    * Borrow an already-retained Agent-scoped Context without extending its lifetime.
    * @param id - session id.
    * @returns the live scoped Context, or undefined without a retained generation.

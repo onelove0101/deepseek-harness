@@ -323,9 +323,17 @@ async write(session: Session): Promise<void>
  * @returns the projection cut at the log end.
  */
 coldSnapshot( meta: SessionHeader, inheritedEventCount: SessionLogOffset, events: readonly SessionEvent[], ): ProjectionSnapshot
+
+/**
+ * Drop the stored record of a permanently deleted session so it does not
+ * outlive its log. Absent ids resolve without writing.
+ * @param id - the deleted session.
+ * @returns resolution once the record is removed from durable storage.
+ */
+async forget(id: SessionId): Promise<void>
 ```
 
-Types: [Session](session.zh.md) · [SessionEvent](session.zh.md) · [SessionHeader](persistence.zh.md) · [SessionLogOffset](session.zh.md)
+Types: [Session](session.zh.md) · [SessionEvent](session.zh.md) · [SessionHeader](persistence.zh.md) · [SessionId](core.zh.md) · [SessionLogOffset](session.zh.md)
 
 Source: [`packages/session/session-projection-cache/src/index.ts`](../../packages/session/session-projection-cache/src/index.ts)
 

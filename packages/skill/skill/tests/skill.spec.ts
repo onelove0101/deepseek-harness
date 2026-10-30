@@ -1269,4 +1269,39 @@ describe('SkillRegistry scoped layers', () => {
     expect(await ctx.skills.list({ scope })).toEqual([])
     await preset.dispose()
   })
+
+  it('hides names from snapshot, list, and get unless the caller includes hidden skills', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SkillRegistry)
+    registerProvider(ctx, new MemoryProvider([
+      memorySkill('shown', 'Shown', 10),
+      memorySkill('hidden', 'Hidden', 10),
+    ]))
+    ctx.skills.register({ name: 'hidden', description: 'Lower layer twin', source: 'runtime', content: 'Runtime body.' })
+    let hidden = new Set(['hidden'])
+    let changes = 0
+    ctx.on('skills/change', () => { changes += 1 })
+    const dispose = ctx.skills.setHiddenNames(() => hidden)
+
+    expect((await ctx.skills.list()).map(skill => skill.name)).toEqual(['shown'])
+    expect((await ctx.skills.snapshot()).skills.map(skill => skill.name)).toEqual(['shown'])
+    expect(await ctx.skills.get('hidden')).toBeUndefined()
+    expect((await ctx.skills.get('shown'))?.content).toBe('shown body.')
+    expect((await ctx.skills.list({ includeHidden: true })).map(skill => skill.name)).toEqual(['hidden', 'shown'])
+    expect((await ctx.skills.get('hidden', { includeHidden: true }))?.name).toBe('hidden')
+
+    hidden = new Set()
+    ctx.skills.notifyHiddenChanged()
+    expect(changes).toBe(1)
+    expect((await ctx.skills.list()).map(skill => skill.name)).toEqual(['hidden', 'shown'])
+
+    hidden = new Set(['shown'])
+    dispose()
+    expect((await ctx.skills.list()).map(skill => skill.name)).toEqual(['hidden', 'shown'])
+    // A disposer that no longer owns the source leaves a newer source in place.
+    const newer = ctx.skills.setHiddenNames(() => hidden)
+    dispose()
+    expect((await ctx.skills.list()).map(skill => skill.name)).toEqual(['hidden'])
+    newer()
+  })
 })

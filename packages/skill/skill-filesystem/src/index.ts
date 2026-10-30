@@ -11,7 +11,7 @@
 
 import { access, lstat, readdir, readFile, realpath, stat } from 'node:fs/promises'
 import { unwatchFile, watchFile, type Stats } from 'node:fs'
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import chokidar from 'chokidar'
 import z from '@deepseek-ai/schemastery'
@@ -92,6 +92,8 @@ interface SkillRoot {
   source: SkillSource
   rank: number
   skipSystem?: boolean
+  /** The root directory is itself one skill (it holds `SKILL.md`) instead of a directory of skills. */
+  single?: boolean
   projectRoot?: string
   trustedHost?: boolean
 }
@@ -145,6 +147,15 @@ export function apply(ctx: Context, config: Config = {}): void {
   })
 }
 
+/** Runtime hooks for a provider whose roots change after construction. */
+export interface FileSystemSkillProviderOptions {
+  /**
+   * Directories that each hold one skill (`<dir>/SKILL.md`). Read on every
+   * lookup; the owner calls `control.invalidate()` after its answer changes.
+   */
+  singleSkillDirs?: () => readonly string[]
+}
+
 /** Provider that maps local project/user skill roots into `ctx.skills`. */
 export class FileSystemSkillProvider implements SkillProvider {
   readonly name: string
@@ -160,6 +171,7 @@ export class FileSystemSkillProvider implements SkillProvider {
     private readonly ctx: Context,
     control: SkillProviderControl,
     config: Config = {},
+    private readonly options: FileSystemSkillProviderOptions = {},
   ) {
     this.name = config.providerName ?? 'filesystem'
     this.includeDefaultRoots = config.includeDefaultRoots ?? true
@@ -258,6 +270,9 @@ export class FileSystemSkillProvider implements SkillProvider {
       )
     }
     roots.push(...this.customSkillDirs.map(path => ({ path, source: 'custom' as const, rank: CUSTOM_RANK })))
+    for (const path of this.options.singleSkillDirs?.() ?? []) {
+      roots.push({ path: resolve(path), source: 'custom', rank: CUSTOM_RANK, single: true })
+    }
     if (this.includeDefaultRoots) {
       roots.push(
         { path: join(this.dshHome, 'skills'), source: 'user-dsh', rank: USER_DSH_RANK, skipSystem: true },
@@ -736,7 +751,9 @@ function hasErrorCode(error: unknown, code: string): boolean {
 
 async function discoverRoot(root: SkillRoot, ctx: Context, provider: string): Promise<SkillCandidate[]> {
   const skills: SkillCandidate[] = []
-  const entries = await listSkillRootEntries(root, ctx)
+  const entries = root.single === true
+    ? [{ name: basename(root.path), type: 'directory' as const, path: root.path }]
+    : await listSkillRootEntries(root, ctx)
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
     if (root.skipSystem && entry.name === '.system') continue
     const locator = entry.type === 'directory'

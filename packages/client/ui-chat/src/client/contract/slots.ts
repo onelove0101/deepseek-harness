@@ -15,7 +15,7 @@ import type {
   HostObservable, InjectFace, KeyedSnapshotSelectorHook, PropsLocale, PropsRenderSlots, PropsRuntime,
   PropsRenderFactories, PropsStore, SlotHookFactory, SnapshotSelectorHook,
 } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
+import type { ObservableSnapshot, SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { ConnectionStateSource } from '@deepseek-ai/dsh-client-connection/client'
 import type { FileDragActions, MarkdownFileMentions, MarkdownLabels } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ContextMenuTriggerProps } from '@deepseek-ai/dsh-client-ui-context-menu/client'
@@ -152,10 +152,18 @@ export interface ChatFileMentions {
   ): MarkdownFileMentions | undefined
 }
 
+/** Optional live process-fold preference consumed by Chat. */
+export interface ChatProcessFoldPreference {
+  /** Reactive switch; when true, native process rows fold during open Turns. */
+  readonly live: SnapshotStore<boolean>
+}
+
 declare module '@deepseek-ai/cordis' {
   interface Context {
     /** Optional prose file-mention provider. */
     chatFileMentions: ChatFileMentions
+    /** Optional live process-fold preference (fold native rows during open Turns). */
+    chatProcessFold?: ChatProcessFoldPreference
   }
 }
 

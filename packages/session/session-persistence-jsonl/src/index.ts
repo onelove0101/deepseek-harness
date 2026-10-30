@@ -14,7 +14,7 @@ import {
   sessionFormatCatalog,
 } from '@deepseek-ai/dsh-session-format-catalog'
 import { readdirSync, type Dirent } from 'node:fs'
-import { open, mkdir, readdir, realpath, link, rm, stat, truncate } from 'node:fs/promises'
+import { open, mkdir, readdir, realpath, link, rename, rm, stat, truncate } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { scheduler } from 'node:timers/promises'
@@ -28,7 +28,7 @@ import {
   type SessionAccess, type SessionHandle,
   type SessionHandleReadResult,
   type SessionLocation, type SessionPersistenceCreateOptions,
-  type SessionPersistenceListOptions, type SessionPersistenceOpenOptions,
+  type SessionPersistenceDeleteOptions, type SessionPersistenceListOptions, type SessionPersistenceOpenOptions,
   type SessionPersistenceSnapshot, type SessionPersistenceStatOptions,
   type SessionPersistenceRevision as PersistenceRevision,
 } from '@deepseek-ai/dsh-session-persistence'
@@ -185,6 +185,12 @@ interface ResolvedJsonlGeneration {
   readonly sourceVersion: number
   readonly currentPath: string
 }
+
+/**
+ * Prefix of a session directory renamed aside during deletion. Encoded session
+ * ids escape `~` as `~` plus four uppercase hex digits, so no id can produce it.
+ */
+const TRASH_PREFIX = '~trash-'
 
 /** One backend-owned historical preparation shared by its current callers. */
 interface MigrationPreparation {
@@ -461,6 +467,47 @@ class JsonlSessionPersistence extends SessionPersistence {
         throw new AggregateError([failure, releaseFailure], `session "${id}": write open failed and its lock release failed`)
       }
       throw failure
+    }
+  }
+
+  /**
+   * Permanently erase one stored session, every generation included. The
+   * session directory is renamed to a `~trash-` sibling before it is removed,
+   * so a crash mid-removal can never leave an older generation standing as the
+   * session's current log.
+   * @param id - the stored session to erase.
+   * @param options - optional cancellation.
+   * @returns resolution once the session directory is unlisted and removed.
+   */
+  async delete(id: SessionId, options?: SessionPersistenceDeleteOptions): Promise<void> {
+    options?.signal?.throwIfAborted()
+    await this.ensureRootEncoding()
+    options?.signal?.throwIfAborted()
+    this.tracker.claimWrite(id)
+    let lease: SessionWriteLease | undefined
+    try {
+      const resolved = await this.findLog(id, options?.signal)
+      if (resolved === undefined) throw new SessionPersistenceNotFoundError(id)
+      const dir = dirname(resolved.currentPath)
+      lease = await this.acquireLease(id, undefined, dir)
+      options?.signal?.throwIfAborted()
+      this.coldLogMemo.delete(id)
+      this.migrationPreparations.get(id)?.controller.abort()
+      this.migrationPreparations.delete(id)
+      const project = dirname(dir)
+      const trash = join(project, TRASH_PREFIX + randomBytes(8).toString('hex'))
+      await rename(dir, trash)
+      /* v8 ignore next 3 -- Windows uses write-through namespace operations. */
+      if (process.platform !== 'win32') {
+        await this.syncDirPosix(project)
+      }
+      await rm(trash, { recursive: true, force: true })
+    } finally {
+      try {
+        await lease?.release()
+      } finally {
+        this.tracker.releaseClaim(id)
+      }
     }
   }
 
@@ -1689,7 +1736,18 @@ class JsonlSessionPersistence extends SessionPersistence {
     const legacy = entries.find(entry =>
       entry.isFile() && (entry.name.endsWith('.jsonl') || entry.name.endsWith('.jsonl.zstd')))
     if (legacy !== undefined) throw this.legacyLayout(join(project, legacy.name))
-    return entries.filter(entry => entry.isDirectory()).map(entry => join(project, entry.name))
+    return entries
+      .filter(entry => entry.isDirectory() && !entry.name.startsWith(TRASH_PREFIX))
+      .map(entry => join(project, entry.name))
+  }
+
+  /** Remove session directories whose deletion a crash interrupted after the rename. */
+  private async sweepTrash(project: string): Promise<void> {
+    for (const entry of await readdir(project, { withFileTypes: true })) {
+      if (entry.isDirectory() && entry.name.startsWith(TRASH_PREFIX)) {
+        await rm(join(project, entry.name), { recursive: true, force: true })
+      }
+    }
   }
 
   /** Reject a root that already belongs to the other physical encoding. */
@@ -1699,6 +1757,7 @@ class JsonlSessionPersistence extends SessionPersistence {
   }
 
   private async checkRootEncoding(): Promise<void> {
+    for (const project of await this.listProjectDirs()) await this.sweepTrash(project)
     await this.mapSessionDirectories(async (dir) => {
       const incompatible = await this.findOppositeGenerationInDirectory(dir)
       if (incompatible !== undefined) throw this.encodingMismatch(incompatible)

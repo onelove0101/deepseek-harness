@@ -1,0 +1,20 @@
+# skill-injector-plugin profile-bundle patch layer.
+#
+# Mounts the skill-injector plugin as a NEW entry (this id has no earlier
+# placeholder, so the insert form appends it rather than targeting it).
+# Install the package into a profile with:
+#
+#   dsh plugin --profile <name> add /Users/jdong/iproject/dsh/my-plugin/skill-injector-plugin
+#
+# After install, open DSH settings and fill the "skill-injector" section's
+# skillPaths with the directories whose skills should be auto-loaded, e.g.:
+#
+#   skillPaths:
+#     - /Users/jdong/AI-D/AI-D-OB/Zuora/Dz-agent/skills
+#
+- insert:
+    - id: skill-injector
+      name: skill-injector-plugin
+      config:
+        enabled: true
+        maxBytes: 131072

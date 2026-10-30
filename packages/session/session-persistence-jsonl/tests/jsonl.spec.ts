@@ -2592,6 +2592,35 @@ describe('JsonlSessionPersistence: edge cases', () => {
     await expect(stat(rawLogPath(root, '/mutated', SessionId('create-snap')))).rejects.toThrow()
   })
 
+  it('delete removes every generation of the session directory and leaves sibling sessions intact', async () => {
+    const doomed = meta('delete-all-generations', '/proj')
+    const sibling = meta('delete-sibling', '/proj')
+    await writeLog(ctx.sessionPersistence, doomed, oneTurnLog())
+    await writeLog(ctx.sessionPersistence, sibling, oneTurnLog())
+    const dir = sessionDir(root, '/proj', doomed.id)
+    await writeFile(generationLogPath(root, '/proj', doomed.id, 0, 'none'), 'historical')
+
+    await ctx.sessionPersistence.delete(doomed.id)
+
+    await expect(stat(dir)).rejects.toThrow()
+    expect(await readdir(dirname(dir))).toEqual([encodeSegment(sibling.id)])
+    expect((await readAll(ctx.sessionPersistence, sibling.id)).events).toHaveLength(oneTurnLog().length)
+  })
+
+  it('a leftover trash directory from an interrupted delete is swept and never listed', async () => {
+    const kept = meta('delete-kept', '/proj')
+    await writeLog(ctx.sessionPersistence, kept, oneTurnLog())
+    await ctx.fiber.dispose()
+    const trash = join(projectDir(root, '/proj'), '~trash-0123456789abcdef')
+    await mkdir(trash)
+    await writeFile(join(trash, 'session.jsonl'), 'partial')
+
+    ctx = new Context()
+    await ctx.plugin(JsonlSessionPersistence, { root, compression: 'none' })
+    expect((await ctx.sessionPersistence.list()).map(s => s.header.id)).toEqual([kept.id])
+    await expect(stat(trash)).rejects.toThrow()
+  })
+
   it('create rejects non-JSON metadata and a fractional creation timestamp without reserving the id', async () => {
     await expect(ctx.sessionPersistence.create({ ...meta('bad-meta'), extra: 1n } as unknown as SessionHeader))
       .rejects.toThrow('session metadata must be losslessly JSON-serializable')

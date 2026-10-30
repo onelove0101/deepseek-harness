@@ -211,6 +211,8 @@ interface SkillLookupOptions {
 interface SkillViewOptions extends SkillLookupOptions {
   /** Viewing scope (the calling agent); omitted reads the global layer alone. */
   readonly scope?: ScopeKey | undefined
+  /** When true, names hidden through {@link SkillRegistry.setHiddenNames} stay visible; settings pages use it to list disabled skills. */
+  readonly includeHidden?: boolean
 }
 ```
 
@@ -236,6 +238,12 @@ interface Config {
 
 `SkillListRequest` 通过 `sessionId` 指定一个 Session；`SkillListValue` 返回允许用户调用的条目，其中包含名称、描述、可选使用提示与模型调用可用性。`SessionSkillCatalog` 在不激活 Agent 的前提下读取 Session cwd 与记录的 preset。live Agent 可以提供其作用域 registry，冷 Session 则使用 preset 的 standing scope。
 
+## 用户管理的 skill
+
+设置页的**技能**页面通过 `skills` Remote 和 `skills` 设置命名空间（`disabled`、`dirs`）管理 skill，二者都由 `SessionSkillCatalog` 拥有。`inventory` 列出无需工作区即可看到的全部 skill（含已禁用项）并带 `enabled` 标志；`add` 接受包含 `SKILL.md` 的绝对目录，把它追加到 `dirs`，并在提供方没有从该目录报告有效 skill 时回滚这次写入。`user-added` 的 `FileSystemSkillProvider` 通过 `singleSkillDirs` 选项在每次查找时读取 `dirs`，每个目录对应 `custom` 优先级下的一个 skill，列表变化时宿主调用 `control.invalidate()`。
+
+`disabled` 由 `SkillRegistry.setHiddenNames()` 应用。`snapshot()`、`list()` 和 `get()` 在发现之后、返回之前丢弃被隐藏的名称，因此模型目录、`skill` 工具、`/name` 调用和 `/` 菜单保持一致，同名的低优先级 skill 也不会顶替被隐藏的 skill。调用方传入 `includeHidden` 即可看到它们，清单就是这样做的。来源在每次查找时读取，所以切换开关无需重建缓存；所有者调用 `notifyHiddenChanged()` 来发出 `skills/change`。
+
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
 <a id="cordis-surface"></a>
@@ -251,6 +259,25 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 Host service backing `ctx.remote.skills` without activating a cold Agent.
 
 ```ts cordis-catalog
+/**
+ * List every skill of the host composition, including skills the user disabled.
+ * @param request - optional workspace directory whose project skill roots are included.
+ * @param signal - caller lifetime carried by the Remote transport.
+ * @returns skills sorted by name with their enabled state.
+ * @throws RemoteError when no skill registry is mounted or discovery fails.
+ */
+@Remote async inventory(request: SkillInventoryRequest, signal: AbortSignal): Promise<SkillInventoryValue>
+
+/**
+ * Register a directory that contains `SKILL.md` as a user-added skill.
+ * @param request - absolute directory path.
+ * @param signal - caller lifetime carried by the Remote transport.
+ * @returns the inventory after the directory was added.
+ * @throws RemoteError when settings are unavailable, the path is not an absolute directory with a valid
+ *   `SKILL.md`, or the directory is already registered.
+ */
+@Remote async add(request: SkillAddRequest, signal: AbortSignal): Promise<SkillInventoryValue>
+
 /**
  * List the user-invocable skills visible to one Session composition.
  * @param request - Session identity whose cwd and preset select the catalog view.
@@ -282,6 +309,19 @@ Layered registry of skill providers, the host+per-scope shape the tools registry
  *   composite effects may yield it directly to preserve teardown ordering.
  */
 registerProvider(create: (control: SkillProviderControl) => SkillProvider): () => void
+
+/**
+ * Hide skills by name from `snapshot()`, `list()`, and `get()` unless the caller passes
+ * `includeHidden`. The hidden name removes the winning entry itself, so a lower-ranked
+ * same-name skill does not resurface. The source is read per lookup; call
+ * {@link SkillRegistry.notifyHiddenChanged} after its answer changes.
+ * @param source - returns the current hidden names.
+ * @returns a disposer that restores the previous (empty) source.
+ */
+setHiddenNames(source: () => ReadonlySet<string>): () => void
+
+/** Emit `skills/change` after the hidden-name source changed its answer. */
+notifyHiddenChanged(): void
 
 /**
  * Register a borrowed readonly runtime skill into the calling context's

@@ -18,6 +18,7 @@ import type { MessageSource } from '@deepseek-ai/dsh-llm'
 import { buildForkSeed } from '@deepseek-ai/dsh-session/fork'
 import { SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionHeader, SessionId, UserMessage } from '@deepseek-ai/dsh-session'
+import { SessionAlreadyOwnedError } from '@deepseek-ai/dsh-session-persistence'
 import { SessionQueryError, type SessionObservation } from '@deepseek-ai/dsh-session-query'
 import { SessionTitleInvalidError } from '@deepseek-ai/dsh-session-title'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
@@ -39,6 +40,8 @@ import type {
   SessionCancelValue,
   SessionCreateRequest,
   SessionCreateValue,
+  SessionDeleteRequest,
+  SessionDeleteValue,
   SessionForkRequest,
   SessionForkValue,
   SessionPromptRequest,
@@ -201,6 +204,43 @@ export class SessionCommandController {
         {},
       )
     }
+  }
+
+  /**
+   * Permanently delete one Session that no Agent currently holds: erase its
+   * stored log and registry references, drop its projection-cache record, and
+   * tell connected clients it is gone.
+   * @param request - Session identity.
+   * @returns acknowledgement after the Session is erased.
+   */
+  async deleteSession(request: SessionDeleteRequest): Promise<SessionDeleteValue> {
+    const { sessionId } = request
+    const active = new RemoteError(
+      'session/active',
+      `session "${sessionId}" is active and cannot be deleted`,
+      { sessionId },
+    )
+    if (this.ctx.sessions.get(sessionId) !== undefined || this.ctx.agents.get(sessionId) !== undefined) {
+      throw active
+    }
+    try {
+      await this.ctx.workspaceRegistry.deleteSession(sessionId)
+    } catch (error) {
+      if (error instanceof SessionAlreadyOwnedError) throw active
+      throw new RemoteError(
+        'gateway/internal',
+        `failed to delete session "${sessionId}": ${String(error)}`,
+        {},
+      )
+    }
+    try {
+      await this.ctx.get('sessionProjectionCache')?.forget(sessionId)
+    } catch (error) {
+      // The record is identity-guarded, so a stale one is never served; it only costs disk.
+      this.ctx.logger.warn(`session "${sessionId}" deleted but its projection-cache record remains: ${String(error)}`)
+    }
+    this.ctx.emit('api-session/removed', sessionId)
+    return { sessionId }
   }
 
   /**

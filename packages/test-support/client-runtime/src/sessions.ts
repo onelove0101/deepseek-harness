@@ -311,7 +311,7 @@ export class TestSessions implements ISessions {
 
   /** Calls observed on the service-level face, newest last. */
   readonly calls: {
-    method: 'create' | 'refreshProjections' | 'refresh' | 'search' | 'fork'
+    method: 'create' | 'refreshProjections' | 'refresh' | 'search' | 'fork' | 'deleteSession'
     args: unknown[]
   }[] = []
 
@@ -680,6 +680,18 @@ export class TestSessions implements ISessions {
   fork(opts: Parameters<ISessions['fork']>[0]): Promise<SessionId> {
     this.calls.push({ method: 'fork', args: [opts] })
     return Promise.resolve(opts.sessionId)
+  }
+
+  /**
+   * Recorded delete stub: the call is observed and resolves; no record or
+   * list entry is removed (benches asserting list convergence drive the
+   * production service).
+   * @param sessionId - session to delete.
+   * @returns resolution after the call is recorded.
+   */
+  deleteSession(sessionId: SessionId): Promise<void> {
+    this.calls.push({ method: 'deleteSession', args: [sessionId] })
+    return Promise.resolve()
   }
 
   /**

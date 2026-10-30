@@ -203,6 +203,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'session/queue-item-not-found': { readonly itemId: MessageId }
     'session/steer-unavailable': { readonly itemId: MessageId }
     'session/title-invalid': { readonly sessionId: SessionId }
+    'session/active': { readonly sessionId: SessionId }
     'session/fork-unavailable': { readonly sessionId: SessionId }
     'session/migration-required': { readonly sessionId: SessionId }
     'subagent/not-found': {
@@ -239,6 +240,39 @@ export interface SkillEntry {
 /** Human-invocable skills visible through one Session's composition. */
 export interface SkillListValue {
   readonly skills: readonly SkillEntry[]
+}
+
+/** Request for the host-wide skill inventory shown by the Settings page. */
+export interface SkillInventoryRequest {
+  /** Workspace directory whose project skill roots are included; omitted lists user, custom, and bundled roots only. */
+  readonly cwd?: string
+}
+
+/** One skill in the host-wide inventory, including skills the user disabled. */
+export interface SkillInventoryEntry {
+  /** Kebab-case identifier of the skill. */
+  readonly name: string
+  /** Short routing description. */
+  readonly description: string
+  /** Provider that owns the skill body. */
+  readonly provider: string
+  /** Discovery source label, such as `user-dsh` or `custom`. */
+  readonly source: string
+  /** Absolute SKILL.md path when the provider is filesystem-backed. */
+  readonly path?: string
+  /** Whether the skill is currently advertised to the model and the `/` menu. */
+  readonly enabled: boolean
+}
+
+/** Host-wide skill inventory. */
+export interface SkillInventoryValue {
+  readonly skills: readonly SkillInventoryEntry[]
+}
+
+/** Request to register one user-owned skill directory. */
+export interface SkillAddRequest {
+  /** Absolute path of a directory that contains `SKILL.md`. */
+  readonly path: string
 }
 
 /** Session list request. */
@@ -302,6 +336,16 @@ export interface SessionRenameRequest {
 export interface SessionRenameValue {
   readonly title: string
   readonly seq: number
+}
+
+/** Permanent Session deletion request. */
+export interface SessionDeleteRequest {
+  readonly sessionId: SessionId
+}
+
+/** Acknowledgement that the Session and its stored log no longer exist. */
+export interface SessionDeleteValue {
+  readonly sessionId: SessionId
 }
 
 /** Session fork request. */

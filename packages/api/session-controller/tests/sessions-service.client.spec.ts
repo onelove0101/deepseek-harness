@@ -1170,3 +1170,28 @@ describe('coverage tails (branch duals)', () => {
     expect(b.svc.binding(sid('s1'))).toBe(reference.binding)
   })
 })
+
+describe('deleteSession', () => {
+  it('drops the deleted Session from the list store once the Host acknowledges', async ({ bench }) => {
+    const b = bench()
+    await feedList(b, [{ id: 'doomed', cwd: '/work' }, { id: 'kept', cwd: '/work' }])
+    b.mock.remote.session.deleteSession.mockResolvedValue(ok({ sessionId: sid('doomed') }))
+
+    await expect(b.svc.deleteSession(sid('doomed'))).resolves.toBeUndefined()
+
+    expect(b.mock.remote.session.deleteSession).toHaveBeenCalledExactlyOnceWith({ sessionId: 'doomed' })
+    expect(b.svc.list.getSnapshot().ids).toEqual(['kept'])
+  })
+
+  it('keeps the Session and reports the Host refusal', async ({ bench }) => {
+    const b = bench()
+    await feedList(b, [{ id: 'busy', cwd: '/work' }])
+    b.mock.remote.session.deleteSession.mockResolvedValue(
+      err(new RemoteError('session/active', 'session "busy" is active', { sessionId: sid('busy') })),
+    )
+
+    await expect(b.svc.deleteSession(sid('busy'))).rejects.toThrow('session delete failed: session/active: session "busy" is active')
+
+    expect(b.svc.list.getSnapshot().ids).toEqual(['busy'])
+  })
+})

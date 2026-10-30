@@ -1024,4 +1024,33 @@ describe('FileSystemSkillProvider', () => {
       }
     }
   })
+
+  it('lists single-skill directories from a live source and rescans after invalidation', async () => {
+    const home = await tempDir('skill-single-home')
+    const parent = await tempDir('skill-single-dirs')
+    await writeSkill(parent, 'first', 'First skill')
+    await writeSkill(parent, 'second', 'Second skill')
+    await mkdir(join(parent, 'empty'), { recursive: true })
+    let dirs = [join(parent, 'first'), join(parent, 'empty')]
+    const ctx = new Context()
+    await ctx.plugin(SkillRegistry)
+    let invalidate!: () => void
+    ctx.skills.registerProvider((control) => {
+      invalidate = control.invalidate
+      return new SkillFileSystem.FileSystemSkillProvider(
+        ctx,
+        control,
+        { providerName: 'user-added', includeDefaultRoots: false, dshHome: join(home, '.dsh'), agentsHome: join(home, '.agents'), watch: false },
+        { singleSkillDirs: () => dirs },
+      )
+    })
+
+    const first = await ctx.skills.list()
+    expect(first.map(skill => [skill.name, skill.provider, skill.source])).toEqual([['first', 'user-added', 'custom']])
+    expect((await ctx.skills.get('first'))?.content).toBe('Use the skill.')
+
+    dirs = [join(parent, 'second')]
+    invalidate()
+    expect((await ctx.skills.list()).map(skill => skill.name)).toEqual(['second'])
+  })
 })

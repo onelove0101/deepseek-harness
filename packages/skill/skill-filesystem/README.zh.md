@@ -55,6 +55,10 @@ skill 可以是被扫描根目录顶层的目录 bundle `<name>/SKILL.md`，也�
 
 项目根目录是包含 `.git` 的最近祖先目录；如果不存在，则使用当前 cwd。用户 DSH 根目录会跳过其 `.system` 子目录。`includeDefaultRoots: false` 会省略项目根、用户根以及 `$DSH_BUNDLED_SKILL_DIR` 默认值，使隔离提供方只看到自身配置的根；`bundledSkillDir` 会按 rank 600 添加一个随包提供的根目录。
 
+### 单 skill 目录
+
+`new FileSystemSkillProvider(ctx, control, config, { singleSkillDirs })` 还接受一个返回目录列表的函数，每个目录就是一个 skill（`<dir>/SKILL.md`）。它们按 `custom` 排序，函数在每次查找时读取，所以改变列表的所有者要调用 `control.invalidate()`。会话控制器用它承载用户在技能设置页添加的目录。
+
 ### 挂载与配置
 
 与 skill 注册表一起加载该插件；它需要 `ctx.skills`。

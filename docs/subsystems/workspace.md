@@ -561,6 +561,20 @@ archiveSession(sessionId: SessionId, options: ArchiveSessionOptions = {}): Promi
 unarchiveSession(sessionId: SessionId): Promise<void>
 
 /**
+ * Permanently delete one session: erase its stored log through
+ * `sessionPersistence.delete`, then drop every registry reference to it
+ * (archive set, pin set, workspace membership, header and path caches). Persistence
+ * is erased first, so a failure there leaves the session and its registry
+ * entries untouched; a failure while scrubbing leaves only orphan ids that
+ * the membership filter already ignores. A session persistence no longer
+ * holds still has its registry references scrubbed.
+ * @param sessionId - The session to delete.
+ * @returns resolution after the registry no longer references the session.
+ * @throws {SessionAlreadyOwnedError} when a live handle holds the session.
+ */
+deleteSession(sessionId: SessionId): Promise<void>
+
+/**
  * Pin one session durably, prepending it to the registry-global pin set.
  * The session must exist (live or in session persistence) and must not be
  * archived. An already pinned id resolves without writing or reordering.

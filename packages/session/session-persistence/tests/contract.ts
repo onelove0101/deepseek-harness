@@ -269,6 +269,30 @@ export function runPersistenceContract(name: string, make: () => Promise<Contrac
       }
     })
 
+    it('delete erases a stored session, rejects while owned, and rejects an absent id', async () => {
+      const { persistence, dispose } = await make()
+      try {
+        const m = meta('doomed')
+        await expect(persistence.delete(m.id)).rejects.toBeInstanceOf(SessionPersistenceNotFoundError)
+        const creator = await persistence.create(m)
+        await creator.append(oneTurnLog())
+        await expect(persistence.delete(m.id)).rejects.toBeInstanceOf(SessionAlreadyOwnedError)
+        await creator.close()
+
+        await persistence.delete(m.id)
+        expect(await persistence.stat(m.id)).toBeUndefined()
+        expect((await persistence.list()).map(s => s.header.id)).not.toContain(m.id)
+        await expect(persistence.open(m.id, 'read')).rejects.toBeInstanceOf(SessionPersistenceNotFoundError)
+        await expect(persistence.delete(m.id)).rejects.toBeInstanceOf(SessionPersistenceNotFoundError)
+
+        // The id is free again after deletion.
+        const recreated = await persistence.create(m)
+        await recreated.close()
+      } finally {
+        await dispose()
+      }
+    })
+
     it('a read handle refuses append and flush with SessionReadOnlyError', async () => {
       const { persistence, dispose } = await make()
       try {

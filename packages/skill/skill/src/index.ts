@@ -116,6 +116,8 @@ export interface SkillLookupOptions {
 export interface SkillViewOptions extends SkillLookupOptions {
   /** Viewing scope (the calling agent); omitted reads the global layer alone. */
   readonly scope?: ScopeKey | undefined
+  /** When true, names hidden through {@link SkillRegistry.setHiddenNames} stay visible; settings pages use it to list disabled skills. */
+  readonly includeHidden?: boolean
 }
 
 /**
@@ -364,6 +366,8 @@ export class SkillRegistry extends Service {
     () => { this.invalidateCache() },
   )
   private readonly collectCache = new Map<string, Map<string, IndexedCandidate>>()
+  /** Boxed so the disposer compares object identity; Cordis rebinds function-valued service properties on read. */
+  private hidden: { readonly source: () => ReadonlySet<string> } | undefined
   private revision = 0
   private nextProviderOrder = 0
   /** Stable identities for cache keys; scope keys are opaque identity-compared objects. */
@@ -428,6 +432,27 @@ export class SkillRegistry extends Service {
   }
 
   /**
+   * Hide skills by name from `snapshot()`, `list()`, and `get()` unless the caller passes
+   * `includeHidden`. The hidden name removes the winning entry itself, so a lower-ranked
+   * same-name skill does not resurface. The source is read per lookup; call
+   * {@link SkillRegistry.notifyHiddenChanged} after its answer changes.
+   * @param source - returns the current hidden names.
+   * @returns a disposer that restores the previous (empty) source.
+   */
+  setHiddenNames(source: () => ReadonlySet<string>): () => void {
+    const box = { source }
+    this.hidden = box
+    return () => {
+      if (this.hidden === box) this.hidden = undefined
+    }
+  }
+
+  /** Emit `skills/change` after the hidden-name source changed its answer. */
+  notifyHiddenChanged(): void {
+    this.notifyChange()
+  }
+
+  /**
    * Register a borrowed readonly runtime skill into the calling context's
    * layer. Project entries outrank runtime entries, which outrank user
    * entries, within one layer. Same-name runtime entries in one layer are
@@ -480,8 +505,10 @@ export class SkillRegistry extends Service {
    */
   async snapshot(options: SkillViewOptions = {}): Promise<SkillCatalogSnapshot> {
     const collected = await this.collect(options)
+    const hidden = this.hiddenFor(options)
     return {
       skills: [...collected.entries.values()]
+        .filter(entry => !hidden.has(entry.candidate.name))
         .map(entry => toSummary(entry.candidate))
         .sort(compareSkillSummary),
       complete: collected.cacheable,
@@ -499,6 +526,7 @@ export class SkillRegistry extends Service {
    */
   async get(name: string, options: SkillViewOptions = {}): Promise<SkillDefinition | undefined> {
     if (!isSkillName(name)) return undefined
+    if (this.hiddenFor(options).has(name)) return undefined
     const collected = await this.collect(options)
     throwIfAborted(options.signal)
     const match = collected.entries.get(name)
@@ -514,6 +542,10 @@ export class SkillRegistry extends Service {
       return undefined
     }
     return definition
+  }
+
+  private hiddenFor(options: SkillViewOptions): ReadonlySet<string> {
+    return options.includeHidden === true || this.hidden === undefined ? new Set() : this.hidden.source()
   }
 
   private async collect(options: SkillViewOptions): Promise<CollectResult> {

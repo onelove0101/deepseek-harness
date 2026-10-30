@@ -121,6 +121,14 @@ Before pushing, follow [dsh-pre-push-checks](.agents/skills/dsh-pre-push-checks/
 - Develop with `build:artifacts`; before claiming completion, run `build:check` after the latest `build:artifacts`, or `build` ([layout](docs/development.md#typescript-project-layout)).
 - **Web browser automation and GIF recording:** launch with `pnpm dsh web --patch apps/web/tests/pin-browse-picker.overlay.yml` to use the [in-page directory picker](apps/web/tests/pin-browse-picker.overlay.yml); omit this override only when testing native picker behavior explicitly.
 
+## Python scripts
+
+When the work needs a Python script (`.py`), create a `script/` subdirectory in the relevant working directory and put the `.py` file(s) inside it. Keep script files there instead of at the directory top level.
+
+## Cache and temp files
+
+Avoid generating unnecessary cache files (build output, test coverage, `*.tsbuildinfo`, lockfile artifacts, and the like) when the task does not require them. When a temporary script or scratch file is created, clean it up after use instead of leaving it in the working tree.
+
 ## Secrets / .env
 
 Windows packaging/signing: [required reading](apps/desktop/windows-signing/README.md).

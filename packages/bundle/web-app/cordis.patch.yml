@@ -327,6 +327,9 @@
     - id: ui-settings-plugin-inventory
       name: '@deepseek-ai/dsh-client-ui-settings-plugin-inventory'
 
+    - id: ui-settings-skills
+      name: '@deepseek-ai/dsh-client-ui-settings-skills'
+
     - id: ui-conversation
       name: '@deepseek-ai/dsh-client-ui-conversation'
 
@@ -338,6 +341,10 @@
 
     - id: ui-chat
       name: '@deepseek-ai/dsh-client-ui-chat'
+
+    # Process fold: a collapsible box over each Turn's execution process.
+    - id: ui-chat-process-fold
+      name: '@deepseek-ai/dsh-client-chat-process-fold'
 
     # Official occupants for the generic sidebar and conversation brand slots.
     - id: ui-brand-official
