@@ -7,10 +7,15 @@
  * rows only while it has none; pointer picks route back through
  * the service (combobox pattern — focus never leaves the textarea, so rows
  * are mousedown-handled and the highlight is exposed via
- * aria-activedescendant on the listbox). A row reads title, then the
+ * aria-activedescendant on the main listbox). A row reads title, then the
  * command-name alias when the title is not the name in another letter case
  * (a localized title), then the description right-aligned. A source publishing crumbs gets a breadcrumb
- * header pinned above the scrolling list.
+ * header pinned above the scrolling list. A `submenu` row shows a chevron and,
+ * while hovered or entered by Enter / Tab, a flyout of nested rows laid over
+ * the menu's right side level with the row. The flyout is a sibling listbox, so
+ * each listbox's aria-activedescendant names only its own rows: the main one
+ * keeps the parent row, the flyout one names its highlighted row; the parent row
+ * reports aria-expanded and aria-controls while its flyout is open.
  */
 import { MenuSurface } from '@deepseek-ai/dsh-client-ui-primitives'
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
@@ -23,6 +28,12 @@ import type { MenuKey } from './locales.ts'
 
 /** Full menu props: injected face + the locale seat. */
 export type MenuViewProps = MenuViewInjected & PropsLocale<'slash.menu'>
+
+/** Sources whose group title is a dictionary entry; any other source name is shown as published. */
+const TITLED_SOURCES = ['command', 'skill', 'subagent', 'expert'] as const satisfies readonly MenuKey[]
+
+/** DOM id of the flyout listbox (the parent row's aria-controls target). */
+const FLYOUT_ID = 'dsh-slash-flyout'
 
 /** Height cap that fits the two headings and eight built-in command rows. */
 const MAX_HEIGHT = 400
@@ -39,12 +50,31 @@ function optionId(source: string, index: number): string {
   return `dsh-slash-option-${source}-${index}`
 }
 
+/** DOM id of one flyout row; only one flyout exists, so the index is enough. */
+function flyoutOptionId(index: number): string {
+  return `dsh-slash-flyout-option-${index}`
+}
+
+/**
+ * Resolve a group's title row text. Source names are open-ended, so only the
+ * known source keys are looked up: a source named like another dictionary key
+ * (`loading`, `drill.key`) must not borrow that entry's copy.
+ * @param source - the group's source name.
+ * @param t - the `slash.menu` translator.
+ * @returns the localized title for a known source; the source name otherwise.
+ */
+function groupTitle(source: string, t: MenuViewProps['t']): string {
+  return (TITLED_SOURCES as readonly string[]).includes(source) ? t(source as MenuKey) : source
+}
+
 /**
  * Render the candidate menu overlay entry.
  * @param props - injected face (the menu store and the pick route); `t` rides the standard locale seat.
  * @returns the dropdown while open; null while closed.
  */
-export function MenuView({ menu, headers, onPick, onCrumb, onHover, onDismiss, t }: MenuViewProps) {
+export function MenuView({
+  menu, headers, flyout, onPick, onFlyoutPick, onFlyoutHover, onCrumb, onHover, onDismiss, t,
+}: MenuViewProps) {
   const state = useSyncExternalStore(
     fn => menu.subscribe(fn),
     () => menu.getSnapshot(),
@@ -53,7 +83,12 @@ export function MenuView({ menu, headers, onPick, onCrumb, onHover, onDismiss, t
     fn => headers.subscribe(fn),
     () => headers.getSnapshot(),
   )
+  const flyoutState = useSyncExternalStore(
+    fn => flyout.subscribe(fn),
+    () => flyout.getSnapshot(),
+  )
   const listRef = useRef<HTMLDivElement>(null)
+  const flyoutRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const [hasOverflowBelow, setHasOverflowBelow] = useState(false)
   // The list is bottom-anchored above the composer; clamp the design cap to
@@ -76,6 +111,21 @@ export function MenuView({ menu, headers, onPick, onCrumb, onHover, onDismiss, t
     document.getElementById(optionId(highlight.source, highlight.index))
       ?.scrollIntoView({ block: 'nearest' })
   }, [highlight])
+  const flyoutHighlight = flyoutState?.highlight ?? null
+  useEffect(() => {
+    if (flyoutHighlight === null) return
+    document.getElementById(flyoutOptionId(flyoutHighlight))?.scrollIntoView({ block: 'nearest' })
+  }, [flyoutHighlight])
+  // Level the flyout with its parent row, clamped so it stays inside the menu.
+  useLayoutEffect(() => {
+    const panel = flyoutRef.current
+    const menuBox = listRef.current
+    if (panel === null || menuBox === null || flyoutState === null) return
+    const row = document.getElementById(optionId(flyoutState.source, flyoutState.parent))
+    if (row === null) return
+    const top = row.getBoundingClientRect().top - menuBox.getBoundingClientRect().top
+    panel.style.top = `${String(Math.max(0, Math.min(top, menuBox.clientHeight - panel.offsetHeight)))}px`
+  }, [flyoutState, state])
   // Dismiss on pointer outside the menu AND outside the composer card
   // (clicking the textarea or bottom bar must not close the menu).
   useEffect(() => {
@@ -138,12 +188,9 @@ export function MenuView({ menu, headers, onPick, onCrumb, onHover, onDismiss, t
           ? null
           : (
             <Fragment key={group.source}>
-              {/* Source names key the dictionary open-endedly: the lookup chain
-                  returns an unknown key verbatim, so an unregistered source
-                  shows its raw name — hence the cast past the typed key union. */}
               {group.showGroupTitle === false || group.items.some(item => item.section !== undefined)
                 ? null
-                : <div className={css.groupTitle} role="presentation" data-source={group.source}>{t(group.source as MenuKey)}</div>}
+                : <div className={css.groupTitle} role="presentation" data-source={group.source}>{groupTitle(group.source, t)}</div>}
               {group.status === 'pending' && group.items.length === 0
                 ? (
                   <div role="status" aria-label={t('loading')} data-source={group.source}>
@@ -153,6 +200,7 @@ export function MenuView({ menu, headers, onPick, onCrumb, onHover, onDismiss, t
                 )
                 : group.items.map((item, index) => {
                   const active = highlight !== null && highlight.source === group.source && highlight.index === index
+                  const expanded = flyoutState !== null && flyoutState.source === group.source && flyoutState.parent === index
                   return (
                     <Fragment key={optionId(group.source, index)}>
                       {item.section !== undefined && item.section !== group.items[index - 1]?.section
@@ -163,6 +211,9 @@ export function MenuView({ menu, headers, onPick, onCrumb, onHover, onDismiss, t
                         type="button"
                         role="option"
                         aria-selected={active}
+                        aria-haspopup={item.submenu === true ? 'listbox' : undefined}
+                        aria-expanded={item.submenu === true ? expanded : undefined}
+                        aria-controls={item.submenu === true && expanded ? FLYOUT_ID : undefined}
                         className={clsx(css.item, active && css.active)}
                         // mousedown, not click: the textarea keeps focus (combobox
                         // pattern) — preventing default stops the focus steal, and the
@@ -174,7 +225,11 @@ export function MenuView({ menu, headers, onPick, onCrumb, onHover, onDismiss, t
                         // mousemove, not mouseenter: real pointer motion moves the
                         // shared highlight; keyboard scrolling rows under a resting
                         // pointer must not steal it back.
-                        onMouseMove={active ? undefined : () => { onHover(group.source, index) }}
+                        // A submenu row also listens while active and closed, so a
+                        // pointer resting on a keyboard-highlighted row opens it.
+                        onMouseMove={active && !(item.submenu === true && flyoutState === null)
+                          ? undefined
+                          : () => { onHover(group.source, index) }}
                       >
                         {item.icon !== undefined && (
                           <span className={css.itemIcon} aria-hidden>
@@ -188,6 +243,9 @@ export function MenuView({ menu, headers, onPick, onCrumb, onHover, onDismiss, t
                           <span className={css.itemAlias}>{item.name}</span>
                         )}
                         {item.description !== undefined && <span className={css.itemDescription}>{item.description}</span>}
+                        {item.submenu === true && (
+                          <span className={css.submenuChevron} aria-hidden><IconChevronRightOutline14 /></span>
+                        )}
                         {item.drill === true && (
                           <span className={css.trailing}>
                             {/* Visual hint only: Tab drills the highlighted row (the
@@ -217,6 +275,50 @@ export function MenuView({ menu, headers, onPick, onCrumb, onHover, onDismiss, t
             </Fragment>
           ))}
       </div>
+      {flyoutState !== null && (
+        <div
+          ref={flyoutRef}
+          id={FLYOUT_ID}
+          className={css.flyout}
+          role="listbox"
+          aria-label={t('flyout.aria')}
+          aria-activedescendant={flyoutHighlight !== null ? flyoutOptionId(flyoutHighlight) : undefined}
+          data-trigger-flyout=""
+        >
+          {flyoutState.status === 'pending'
+            ? (
+              <div role="status" aria-label={t('loading')}>
+                <div className={css.skeletonRow}><span className={css.skeletonBar} style={{ width: '48%' }} /></div>
+                <div className={css.skeletonRow}><span className={css.skeletonBar} style={{ width: '64%' }} /></div>
+              </div>
+            )
+            : flyoutState.status === 'failed'
+              ? <div className={css.flyoutEmpty} role="alert">{t('flyout.failed')}</div>
+              : flyoutState.items.length === 0
+                ? <div className={css.flyoutEmpty} role="status">{t('flyout.empty')}</div>
+                : flyoutState.items.map((item, index) => {
+                  const active = flyoutState.highlight === index
+                  return (
+                    <button
+                      key={flyoutOptionId(index)}
+                      id={flyoutOptionId(index)}
+                      type="button"
+                      role="option"
+                      aria-selected={active}
+                      className={clsx(css.item, active && css.active)}
+                      onMouseDown={(ev) => {
+                        ev.preventDefault()
+                        onFlyoutPick(index)
+                      }}
+                      onMouseMove={active ? undefined : () => { onFlyoutHover(index) }}
+                    >
+                      <span className={css.itemName}>{item.label ?? item.name}</span>
+                      {item.description !== undefined && <span className={css.itemDescription}>{item.description}</span>}
+                    </button>
+                  )
+                })}
+        </div>
+      )}
     </MenuSurface>
   )
 }

@@ -16,7 +16,7 @@ Source: [`packages/workspace/workspace/src/types.ts`](../../packages/workspace/w
 type WorkspaceId = Branded<'WorkspaceId'>
 ```
 
-`WorkspaceId` is a [branded id](core.md#branded-ids). Path identity is separate: `realpathNormalize` (`fs.realpath`; trailing slashes, `..`, and symlinks resolved) is the one uniqueness canon — workspace paths are stored canonicalized, uniqueness is string equality of canonical paths (a symlink to an owned directory collides), and attach-time session cwd checks go through the same canon.
+`WorkspaceId` is a [branded id](core.md#branded-ids). `GroupId` identifies a durable Workspace Group, and `FolderId` identifies a logical Session Folder within one Workspace. Path identity is separate: `realpathNormalize` (`fs.realpath`; trailing slashes, `..`, and symlinks resolved) is the one uniqueness canon — workspace paths are stored canonicalized, uniqueness is string equality of canonical paths (a symlink to an owned directory collides), and attach-time session cwd checks go through the same canon.
 
 ## The workspace entity
 
@@ -63,6 +63,9 @@ interface Workspace {
    */
   readonly sessionIds: readonly SessionId[]
 
+  /** Ordered logical Session folders; members are absent from the Workspace root. */
+  readonly folders: readonly WorkspaceFolder[]
+
   /**
    * Replace the display title durably.
    * @param title - New title; any string, duplicates across workspaces allowed.
@@ -108,6 +111,36 @@ interface Workspace {
   detachSession(sessionId: SessionId): Promise<void>
 
   /**
+   * Create one logical Folder under this Workspace. It never creates a filesystem directory.
+   * @param title - Folder display title.
+   * @returns the newly durable Folder.
+   */
+  createFolder(title: string): Promise<WorkspaceFolder>
+
+  /**
+   * Replace one logical Folder's display title.
+   * @param folderId - Folder to rename.
+   * @param title - New Folder display title.
+   * @returns resolution after durability.
+   */
+  setFolderTitle(folderId: FolderId, title: string): Promise<void>
+
+  /**
+   * Delete one logical Folder and return its Sessions to the Workspace root.
+   * @param folderId - Folder to delete.
+   * @returns resolution after durability.
+   */
+  deleteFolder(folderId: FolderId): Promise<void>
+
+  /**
+   * File an accounted Session in a logical Folder, or return it to the Workspace root.
+   * @param sessionId - Accounted Session to file.
+   * @param folderId - Destination Folder; omitted returns the Session to the root.
+   * @returns resolution after durability.
+   */
+  moveSessionToFolder(sessionId: SessionId, folderId?: FolderId): Promise<void>
+
+  /**
    * Live directory check, uncached: whether {@link path} currently exists and
    * is a directory. A missing directory never mutates the record — the
    * directory may only be temporarily moved.
@@ -121,7 +154,9 @@ Ownership truth is the record's ordered `sessionIds`, never derived from session
 
 ## The registry: `ctx.workspaceRegistry`
 
-`WorkspaceRegistry` ([signatures](#ctxworkspaceregistry--workspaceregistry)) owns registration and resolution. `create(path, title?)` requires a fully qualified path, canonicalizes it, rejects a nonexistent path (the original `ENOENT`) or a non-directory, returns the existing entity unchanged when the canonical path is already owned, and otherwise creates a record with `title ?? defaultWorkspaceTitle(path)` prepended to the durable registry order (different canonical paths may share a display title, and a path with no final segment uses its root spelling). `get(id)` and the ordered `list()` are synchronous cache reads; `resolveByPath(path)` applies the same fully qualified realpath canon without creating. `delete(id)` removes only the registration, order entry, and session account — the directory, user files, live sessions, and persisted logs are never touched, so those sessions become Ungrouped ([reference](../../packages/workspace/workspace/README.md)); unknown ids return `false`. Create and delete persist a pending-mutation marker before their two writes (record + order) can diverge; startup resolves exactly the marked mutation — by deleting the marked table row, which completes an interrupted delete and rolls back an interrupted create (the registration is re-creatable, so rollback is the safe direction) — and an unmarked order/table mismatch fails loud as corruption.
+`WorkspaceRegistry` ([signatures](#ctxworkspaceregistry--workspaceregistry)) owns registration and resolution. `create(path, title?)` requires a fully qualified path, canonicalizes it, rejects a nonexistent path (the original `ENOENT`) or a non-directory, returns the existing entity unchanged when the canonical path is already owned, and otherwise creates a record with `title ?? defaultWorkspaceTitle(path)` prepended to the durable registry order (different canonical paths may share a display title, and a path with no final segment uses its root spelling). `get(id)` and the ordered `list()` are synchronous cache reads; `resolveByPath(path)` applies the same fully qualified realpath canon without creating. `delete(id)` removes only the registration, order entry, and session account — the directory, user files, live sessions, and persisted logs are never touched, so those sessions become Ungrouped ([reference](../../packages/workspace/workspace/README.md)); unknown ids return `false`. Create and delete persist a pending-mutation marker before their two writes (record + order) can diverge; startup resolves exactly the marked mutation — by deleting the marked table row, which completes an interrupted delete and rolls back an interrupted create (the registration is re-creatable, so rollback is the safe direction) — and an unmarked order/table mismatch fails loud as corruption. A Folder only partitions that owned account for presentation: a Session absent from every Folder is at the Workspace root, and a Session appears in at most one Folder. Filing never changes the Session cwd, log, or Workspace ownership; deleting a Folder returns its Sessions to the root without deleting Session data or filesystem content. Folder operation errors reject as `WorkspaceFolderInvalidError`.
+
+A Workspace Group holds ordered Workspace ids. `workspaceIds` in registry state is the top-level Workspace order; a Workspace is present there or in exactly one Group. `createGroup`, `listGroups`, `getGroup`, `deleteGroup`, and `moveToGroup` manage this durable hierarchy. Moving a Workspace into a Group removes it from the top-level order, while moving it out returns it there. Dissolving a Group returns all of its Workspaces to the top level without altering their directories, files, Sessions, or Session histories. Group transfers use the registry pending-mutation record so restart recovery completes an interrupted transfer.
 
 Sessions get their cwd at create time from whoever creates them, not from this registry — the API gateway resolves a new session's cwd from the chosen workspace's `path` (falling back to an explicit or default cwd), creates the session so the cwd lands in its immutable [`SessionHeader`](persistence.md#sessionheader--metadata-beside-the-log), then calls `attachSession`, which re-validates that stored header cwd against the workspace path. On the first successful start, the registry bootstraps history from persisted headers alone (`id`, `cwd`, `createdAt` — never event bodies), grouping sessions with a valid canonical cwd into per-directory workspaces, newest first; the initialized marker is written last so an interrupted bootstrap resumes safely. The bootstrap is one-time: cwd-less legacy sessions stay Ungrouped, and sessions created afterwards join a workspace only through `attachSession`.
 

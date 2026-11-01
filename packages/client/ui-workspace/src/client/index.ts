@@ -309,6 +309,18 @@ export function apply(ctx: Context): void {
     notifyArchivedNotOpenable: () => { notify({ kind: 'archivedNotOpenable' }) },
     renameWorkspace: async (workspaceId, title) => { await workspaces.rename(workspaceId, title) },
     deleteWorkspace: async (workspaceId) => { await workspaces.delete(workspaceId) },
+    createGroup: async (title) => { await workspaces.createGroup(title) },
+    renameGroup: async (groupId, title) => { await workspaces.renameGroup(groupId, title) },
+    deleteGroup: async (groupId) => { await workspaces.deleteGroup(groupId) },
+    moveToGroup: async (workspaceId, groupId) => { await workspaces.moveToGroup(workspaceId, groupId) },
+    createFolder: async (workspaceId, title) => { await workspaces.createFolder(workspaceId, title) },
+    renameFolder: async (workspaceId, folderId, title) => {
+      await workspaces.renameFolder(workspaceId, folderId, title)
+    },
+    deleteFolder: async (workspaceId, folderId) => { await workspaces.deleteFolder(workspaceId, folderId) },
+    moveSessionToFolder: async (workspaceId, sessionId, folderId) => {
+      await workspaces.moveSessionToFolder(workspaceId, sessionId, folderId)
+    },
     insertWorkspaceBefore: async (workspaceId, beforeWorkspaceId) => {
       await workspaces.insertBefore(workspaceId, beforeWorkspaceId)
     },

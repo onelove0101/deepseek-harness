@@ -376,6 +376,13 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Streams one background job\'s observation record over the generated Remote namespace; the roster stays on the session control stream.',
   },
   {
+    key: 'experts',
+    pkg: 'expert',
+    title: 'Per-user Expert library and invocation',
+    mode: 'core',
+    note: 'Stores Experts and their private text library, and appends one logged instruction message when a prompt starts with an Expert mention.',
+  },
+  {
     key: 'credentialsController',
     pkg: 'api-settings-controller',
     title: 'Host credential-surface Remote controller',

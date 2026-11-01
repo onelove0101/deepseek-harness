@@ -1,7 +1,8 @@
 /**
  * `slash.menu` namespace dictionaries: group titles keyed by source name
- * (the lookup chain returns the key itself, so an unknown source shows its
- * raw name), the pending row, and the listbox and header aria labels.
+ * (MenuView looks titles up only for the known source names and shows any
+ * other source name as published), the pending row, and the listbox and
+ * header aria labels.
  */
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
@@ -9,10 +10,14 @@ export const zh = {
   'command': '指令',
   'skill': '技能',
   'subagent': '子智能体',
+  'expert': '专家',
   'loading': '正在加载…',
   'drill.aria': '进入目录',
   'drill.hint': '进入目录',
   'drill.key': 'Tab',
+  'flyout.aria': '子菜单',
+  'flyout.empty': '暂无可选项',
+  'flyout.failed': '无法加载可选项',
   'crumbs.aria': '目录导航',
   'suggestions.aria': '触发候选建议',
 } satisfies Record<string, string>
@@ -25,10 +30,14 @@ export const en = {
   'command': 'Commands',
   'skill': 'Skills',
   'subagent': 'Subagents',
+  'expert': 'Experts',
   'loading': 'Loading…',
   'drill.aria': 'Browse folder',
   'drill.hint': 'Browse folder',
   'drill.key': 'Tab',
+  'flyout.aria': 'Submenu',
+  'flyout.empty': 'Nothing to choose',
+  'flyout.failed': 'Could not load choices',
   'crumbs.aria': 'Folder navigation',
   'suggestions.aria': 'Trigger suggestions',
 } satisfies Record<MenuKey, string>

@@ -16,8 +16,10 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { RemoteError, TestRemote, TestSessions } from '@deepseek-ai/dsh-client-test-runtime'
 import type { SessionFixture } from '@deepseek-ai/dsh-client-test-runtime'
 import { IconGoalOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { ClientSessionContext, ConsumeTokenRequest, InputTriggerPick, InputTriggerSource, SubmitAttachment } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
-import type { CommandContribution, CommandDecoration, PopupSelectSpec, SelectOption } from '../src/client/contract.ts'
+import type {
+  ClientSessionContext, ConsumeTokenRequest, InputTriggerCandidate, InputTriggerPick, InputTriggerSource, SubmitAttachment,
+} from '@deepseek-ai/dsh-client-ui-input-trigger/client'
+import type { AddContribution, CommandContribution, CommandDecoration, PopupSelectSpec, SelectOption } from '../src/client/contract.ts'
 import type { CommandDescriptor } from '../src/client/directory.ts'
 import { CommandUiRuntime } from '../src/client/service.ts'
 import { en, zh, type CommandKey } from '../src/client/locales.ts'
@@ -194,8 +196,17 @@ const themeContribution = (over: Partial<CommandContribution> = {}): CommandCont
   ...over,
 })
 
-const req = (query: string, position: 'leading' | 'inline' = 'leading') =>
-  ({ query, position, drilled: false, signal: new AbortController().signal })
+const req = (
+  query: string,
+  position: 'leading' | 'inline' = 'leading',
+  origin?: 'launcher',
+) => ({
+  query,
+  position,
+  drilled: false,
+  ...(origin === undefined ? {} : { origin }),
+  signal: new AbortController().signal,
+})
 
 describe('registration', () => {
   it('reports missing initialization dependencies', () => {
@@ -317,6 +328,35 @@ describe('candidates', () => {
     command.register(themeContribution())
     const names = (await source.candidates(proj('s1'), req('tm'))).map(c => c.name)
     expect(names).toEqual(['theme'])
+  })
+
+  it('lists Add-only rows only when the Composer launches the menu', async () => {
+    const { command, source } = await bench()
+    const expert: AddContribution = {
+      name: 'expert',
+      label: () => 'Expert',
+      description: () => 'Pick an Expert',
+      available: () => true,
+      flyout: { options: () => Promise.resolve([]), onSelect: () => undefined },
+    }
+    command.registerAdd(expert)
+    const typed = await source.candidates(proj('s1'), req(''))
+    expect(typed.map(row => row.name)).not.toContain('expert')
+    const launched = await source.candidates(proj('s1'), req('', 'leading', 'launcher'))
+    expect(launched.find(row => row.name === 'expert')).toEqual({
+      name: 'expert', label: 'Expert', description: 'Pick an Expert', submenu: true, section: 'command:section.add',
+    })
+  })
+
+  it('rejects a Host/Add-only collision only when the Composer launches the menu', async () => {
+    const { command, source } = await bench()
+    command.registerAdd({
+      name: 'plan', label: () => 'Plan', description: () => 'Other plan', available: () => true,
+      flyout: { options: () => Promise.resolve([]), onSelect: () => undefined },
+    })
+    await expect(source.candidates(proj('s1'), req(''))).resolves.toBeDefined()
+    await expect(source.candidates(proj('s1'), req('', 'leading', 'launcher')))
+      .rejects.toThrow('Add contribution /plan collides with a host or slash command')
   })
 
   it('localizes canonical built-in and contribution descriptions on every candidate request', async () => {
@@ -675,6 +715,194 @@ describe('dispatch (menu column)', () => {
   })
 })
 
+describe('flyout (nested choices beside a row)', () => {
+  const expertContribution = (over: Partial<CommandContribution> = {}): CommandContribution => ({
+    name: 'expert',
+    description: () => 'pick an expert',
+    available: () => true,
+    ui: { kind: 'action', run: () => undefined },
+    flyout: {
+      options: () => Promise.resolve([
+        { id: 'reviewer', label: 'reviewer', detail: 'Reviews code' },
+        { id: 'writer', label: 'writer' },
+      ]),
+      onSelect: () => undefined,
+    },
+    ...over,
+  })
+  const addContribution = (over: Partial<AddContribution> = {}): AddContribution => ({
+    name: 'expert',
+    label: () => 'Expert',
+    description: () => 'pick an expert',
+    available: () => true,
+    flyout: {
+      options: () => Promise.resolve([
+        { id: 'reviewer', label: 'reviewer', value: 'catalog', detail: 'Reviews code' },
+        { id: 'writer', label: 'writer', value: 'catalog' },
+      ]),
+      onSelect: () => undefined,
+    },
+    ...over,
+  })
+  const flyoutPick = (
+    source: InputTriggerSource,
+    parent: InputTriggerCandidate,
+    candidate: InputTriggerCandidate,
+    session: ClientSessionContext,
+  ) => source.onPick({
+    candidate,
+    parent,
+    session,
+    position: 'leading',
+    via: 'menu',
+    action: 'pick',
+    span: { start: 0, end: 1, draftRev: 3 },
+  })
+
+  it('a contribution with a flyout lists as a submenu row and a plain one does not', async () => {
+    const { command, source } = await bench()
+    command.register(expertContribution())
+    command.register(themeContribution())
+    const rows = await source.candidates(proj('s1'), req(''))
+    expect(rows.find(row => row.name === 'expert')?.submenu).toBe(true)
+    expect(rows.find(row => row.name === 'theme')?.submenu).toBeUndefined()
+  })
+
+  it('the expert row sorts into the Add section', async () => {
+    const { command, source } = await bench()
+    command.register(expertContribution())
+    command.register(themeContribution())
+    const rows = await source.candidates(proj('s1'), req(''))
+    expect(rows.find(row => row.name === 'expert')?.section).toBe('command:section.add')
+    expect(rows.find(row => row.name === 'theme')?.section).toBe('command:section.commands')
+  })
+
+  it('submenu() maps the options to candidates and reads them afresh per call', async () => {
+    const { command, source } = await bench()
+    const options = vi.fn(() => Promise.resolve([
+      { id: 'reviewer', label: 'Reviewer', value: 'response-catalog', detail: 'Reviews code' },
+      { id: 'writer', label: 'Writer' },
+    ]))
+    command.register(expertContribution({ flyout: { options, onSelect: () => undefined } }))
+    const signal = new AbortController().signal
+    const first = await source.submenu!(proj('s1'), { name: 'expert' }, signal)
+    expect(first).toEqual([
+      { name: 'reviewer', label: 'Reviewer', value: 'response-catalog', description: 'Reviews code' },
+      { name: 'writer', label: 'Writer' },
+    ])
+    await source.submenu!(proj('s1'), { name: 'expert' }, signal)
+    expect(options).toHaveBeenCalledTimes(2)
+    expect(options).toHaveBeenCalledWith(proj('s1'), signal)
+  })
+
+  it('an Add-only flyout opens from the launcher and preserves its opaque selection value', async () => {
+    const { command, source, mint } = await bench()
+    const scope = mint('s1')
+    const consumes: ConsumeTokenRequest[] = []
+    scope.ctx.on('slash/input-consume-token', (request) => { consumes.push(request); return true })
+    const onSelect = vi.fn()
+    command.registerAdd(addContribution({ flyout: {
+      options: () => Promise.resolve([{ id: 'reviewer', label: 'Reviewer', value: 'response-catalog', detail: 'Reviews code' }]),
+      onSelect,
+    } }))
+    expect((await source.candidates(proj('s1'), req(''))).map(row => row.name)).not.toContain('expert')
+    expect((await source.candidates(proj('s1'), req('', 'leading', 'launcher'))).find(row => row.name === 'expert')?.submenu).toBe(true)
+    const [row] = await source.submenu!(proj('s1'), { name: 'expert' }, new AbortController().signal)
+    expect(row).toEqual({ name: 'reviewer', label: 'Reviewer', value: 'response-catalog', description: 'Reviews code' })
+    expect(flyoutPick(source, { name: 'expert' }, row!, proj('s1'))).toBe('handled')
+    await Promise.resolve()
+    expect(consumes).toEqual([{ guard: { kind: 'span', span: { start: 0, end: 1, draftRev: 3 } } }])
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(
+      { id: 'reviewer', label: 'Reviewer', value: 'response-catalog', detail: 'Reviews code' }, proj('s1'),
+    )
+  })
+
+  it('an unavailable, flyout-less, or vanished parent lists no rows', async () => {
+    const { command, source } = await bench()
+    command.register(expertContribution({ available: () => false }))
+    command.register(themeContribution())
+    const signal = new AbortController().signal
+    await expect(source.submenu!(proj('s1'), { name: 'expert' }, signal)).resolves.toEqual([])
+    await expect(source.submenu!(proj('s1'), { name: 'theme' }, signal)).resolves.toEqual([])
+    await expect(source.submenu!(proj('s1'), { name: 'gone' }, signal)).resolves.toEqual([])
+  })
+
+  it('a flyout pick consumes the span then hands the rebuilt option to onSelect without executing', async () => {
+    const { command, source, mint, warm, executeCalls } = await bench()
+    const scope = mint('s1')
+    const consumes: ConsumeTokenRequest[] = []
+    scope.ctx.on('slash/input-consume-token', (r) => { consumes.push(r); return true })
+    const onSelect = vi.fn()
+    const run = vi.fn()
+    command.register(expertContribution({
+      ui: { kind: 'action', run },
+      flyout: { options: () => Promise.resolve([]), onSelect },
+    }))
+    await warm(proj('s1'))
+    const outcome = flyoutPick(
+      source, { name: 'expert' }, { name: 'reviewer', label: 'Reviewer', description: 'Reviews code' }, proj('s1'),
+    )
+    expect(outcome).toBe('handled')
+    expect(consumes).toEqual([{ guard: { kind: 'span', span: { start: 0, end: 1, draftRev: 3 } } }])
+    await Promise.resolve()
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(
+      { id: 'reviewer', label: 'Reviewer', detail: 'Reviews code' }, proj('s1'),
+    )
+    expect(run).not.toHaveBeenCalled()
+    expect(executeCalls).toEqual([])
+  })
+
+  it('an onSelect rejection surfaces as an error notice', async () => {
+    const { command, source, mint, warm, notices } = await bench()
+    const scope = mint('s1')
+    scope.ctx.on('slash/input-consume-token', () => true)
+    command.register(expertContribution({
+      flyout: { options: () => Promise.resolve([]), onSelect: () => Promise.reject(new Error('insert failed')) },
+    }))
+    await warm(proj('s1'))
+    expect(flyoutPick(source, { name: 'expert' }, { name: 'reviewer' }, proj('s1'))).toBe('handled')
+    await vi.waitFor(() => {
+      expect(notices).toEqual([{ scope: sid('s1'), level: 'error', text: 'insert failed' }])
+    })
+  })
+
+  it('a synchronous onSelect failure is contained and surfaces as an error notice', async () => {
+    const { command, source, mint, warm, notices } = await bench()
+    const scope = mint('s1')
+    const consumes: ConsumeTokenRequest[] = []
+    scope.ctx.on('slash/input-consume-token', (request) => {
+      consumes.push(request)
+      return true
+    })
+    command.register(expertContribution({
+      flyout: {
+        options: () => Promise.resolve([]),
+        onSelect: () => { throw new Error('insert failed') },
+      },
+    }))
+    await warm(proj('s1'))
+    expect(flyoutPick(source, { name: 'expert' }, { name: 'reviewer' }, proj('s1'))).toBe('handled')
+    expect(consumes).toEqual([{ guard: { kind: 'span', span: { start: 0, end: 1, draftRev: 3 } } }])
+    await vi.waitFor(() => {
+      expect(notices).toEqual([{ scope: sid('s1'), level: 'error', text: 'insert failed' }])
+    })
+  })
+
+  it('a flyout pick on an unavailable or flyout-less parent is declined and never calls onSelect', async () => {
+    const { command, source, warm } = await bench()
+    const onSelect = vi.fn()
+    command.register(expertContribution({
+      available: () => false,
+      flyout: { options: () => Promise.resolve([]), onSelect },
+    }))
+    command.register(themeContribution())
+    await warm(proj('s1'))
+    expect(flyoutPick(source, { name: 'expert' }, { name: 'reviewer' }, proj('s1'))).toBeUndefined()
+    expect(flyoutPick(source, { name: 'theme' }, { name: 'dark' }, proj('s1'))).toBeUndefined()
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+})
+
 describe('matchSpace (space column)', () => {
   it('answers undefined from a not-ready key (no waiting, no RPC)', async () => {
     const { source, listCalls } = await bench()
@@ -799,6 +1027,17 @@ describe('matchEnter (enter column)', () => {
     expect(command.popupFor(scope.ctx).state.getSnapshot().open).toBe(true)
     expect(listCalls).toEqual([]) // contribution short-circuits ahead of ensureReady
     await expect(source.matchEnter!(proj('s1'), '/theme dark', signal(), { attachments: 0 })).resolves.toBeUndefined()
+  })
+
+  it('an Add-only name remains ordinary typed text', async () => {
+    const { command, source, warm } = await bench()
+    command.registerAdd({
+      name: 'expert', label: () => 'Expert', description: () => 'Pick an Expert', available: () => true,
+      flyout: { options: () => Promise.resolve([]), onSelect: () => undefined },
+    })
+    await warm(proj('s1'))
+    expect(source.matchSpace!(proj('s1'), '/expert')).toBeUndefined()
+    await expect(source.matchEnter!(proj('s1'), '/expert', signal(), { attachments: 0 })).resolves.toBeUndefined()
   })
 
   it('unknown name, bare "/", and non-slash lines → undefined', async () => {
@@ -1009,6 +1248,22 @@ describe('register (contribution face)', () => {
     expect(() => command.register(themeContribution())).toThrow('duplicate contribution')
     dispose()
     command.register(themeContribution())()
+  })
+
+  it('an Add-only disposer frees its name and names cannot cross the two registries', async () => {
+    const { command } = await bench()
+    const add: AddContribution = {
+      name: 'expert', label: () => 'Expert', description: () => 'Pick an Expert', available: () => true,
+      flyout: { options: () => Promise.resolve([]), onSelect: () => undefined },
+    }
+    const dispose = command.registerAdd(add)
+    expect(() => command.registerAdd(add)).toThrow('duplicate contribution')
+    expect(() => command.register(themeContribution({ name: 'expert' }))).toThrow('duplicate contribution')
+    dispose()
+    const removeSlash = command.register(themeContribution({ name: 'expert' }))
+    expect(() => command.registerAdd(add)).toThrow('duplicate contribution')
+    removeSlash()
+    command.registerAdd(add)()
   })
 })
 

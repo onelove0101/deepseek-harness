@@ -45,6 +45,24 @@ export interface MenuState {
   readonly highlight: { readonly source: string; readonly index: number } | null
 }
 
+/**
+ * The open flyout of one `submenu` row. At most one exists, and only while the
+ * menu is open with the shared highlight on that row.
+ */
+export interface FlyoutState {
+  /** Source (group) owning the parent row. */
+  readonly source: string
+  /** Index of the parent row in that group. */
+  readonly parent: number
+  /** Name of the parent row when the flyout opened; a refetched group that moves the row closes it. */
+  readonly parentName: string
+  /** Pending source read, ready rows, or a recoverable source-read failure. */
+  readonly status: 'pending' | 'ready' | 'failed'
+  readonly items: readonly InputTriggerCandidate[]
+  /** Highlighted flyout row; null while the pointer or keyboard is still on the parent row. */
+  readonly highlight: number | null
+}
+
 /** Menu reduction events. Source failure = silent group removal (log only; no error UI tier). */
 export type MenuEvent =
   | { readonly type: 'hit'; readonly hit: TriggerHit | null }

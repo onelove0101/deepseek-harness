@@ -3,8 +3,8 @@
 import { Service, type Context } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RemoteFailure } from '@deepseek-ai/dsh-typert-protocol'
-import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
-import type { WorkspaceView } from '../types.ts'
+import type { FolderId, GroupId, WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
+import type { WorkspaceFolderView, WorkspaceGroupView, WorkspaceView } from '../types.ts'
 import type { ClientWorkspaceModel, WorkspaceSnapshot } from './model.ts'
 
 /** Structured create failure for callers that distinguish Host business errors. */
@@ -28,6 +28,19 @@ export class WorkspaceArchiveError extends Error {
   /** @param rpcError - Host business or folded carrier failure. */
   constructor(readonly rpcError: RemoteFailure) {
     super(`workspace session archive failed: ${rpcError.code}: ${rpcError.message}`)
+  }
+}
+
+/** Structured Group or Folder command failure that preserves the Host failure code. */
+export class WorkspaceCommandError extends Error {
+  override readonly name = 'WorkspaceCommandError'
+
+  /**
+   * @param operation - failed command label.
+   * @param rpcError - Host business or folded carrier failure.
+   */
+  constructor(operation: string, readonly rpcError: RemoteFailure) {
+    super(`workspace ${operation} failed: ${rpcError.code}: ${rpcError.message}`)
   }
 }
 
@@ -112,6 +125,68 @@ export interface IWorkspaces {
     sessionId: SessionId,
     beforeSessionId?: SessionId,
   ): Promise<WorkspaceView>
+  /**
+   * Create a Workspace Group at the head of the Group order.
+   * @param title - unique non-blank Group title.
+   * @returns the created Group.
+   * @throws {WorkspaceCommandError} when the Host rejects the title.
+   */
+  createGroup(title: string): Promise<WorkspaceGroupView>
+  /**
+   * Rename a Workspace Group.
+   * @param groupId - target Group.
+   * @param title - unique non-blank Group title.
+   * @returns the renamed Group.
+   * @throws {WorkspaceCommandError} when the Group is unknown or the title conflicts.
+   */
+  renameGroup(groupId: GroupId, title: string): Promise<WorkspaceGroupView>
+  /**
+   * Dissolve a Group; its Workspaces return to the top level.
+   * @param groupId - Group to dissolve.
+   * @throws {WorkspaceCommandError} when the Group is unknown.
+   */
+  deleteGroup(groupId: GroupId): Promise<void>
+  /**
+   * File a Workspace in a Group, or lift it to the top level.
+   * @param workspaceId - Workspace to file.
+   * @param groupId - target Group; omitted lifts to the top level.
+   * @throws {WorkspaceCommandError} when the Workspace or Group is unknown.
+   */
+  moveToGroup(workspaceId: WorkspaceId, groupId?: GroupId): Promise<void>
+  /**
+   * Create a Session Folder inside a Workspace.
+   * @param workspaceId - owning Workspace.
+   * @param title - unique non-blank Folder title within the Workspace.
+   * @returns the created Folder.
+   * @throws {WorkspaceCommandError} when the Workspace is unknown or the title conflicts.
+   */
+  createFolder(workspaceId: WorkspaceId, title: string): Promise<WorkspaceFolderView>
+  /**
+   * Rename a Session Folder.
+   * @param workspaceId - owning Workspace.
+   * @param folderId - target Folder.
+   * @param title - unique non-blank Folder title within the Workspace.
+   * @returns the owning Workspace.
+   * @throws {WorkspaceCommandError} when the Folder is unknown or the title conflicts.
+   */
+  renameFolder(workspaceId: WorkspaceId, folderId: FolderId, title: string): Promise<WorkspaceView>
+  /**
+   * Remove a Session Folder; its Sessions return to the Workspace root.
+   * @param workspaceId - owning Workspace.
+   * @param folderId - Folder to remove.
+   * @returns the owning Workspace.
+   * @throws {WorkspaceCommandError} when the Folder is unknown.
+   */
+  deleteFolder(workspaceId: WorkspaceId, folderId: FolderId): Promise<WorkspaceView>
+  /**
+   * File a Session in a Folder, or return it to the Workspace root.
+   * @param workspaceId - owning Workspace.
+   * @param sessionId - Session to file.
+   * @param folderId - target Folder; omitted returns the Session to the root.
+   * @returns the owning Workspace.
+   * @throws {WorkspaceCommandError} when the Session or Folder is not owned by the Workspace.
+   */
+  moveSessionToFolder(workspaceId: WorkspaceId, sessionId: SessionId, folderId?: FolderId): Promise<WorkspaceView>
 }
 
 /** Owns the bare Workspace snapshot and Workspace-only commands. */
@@ -182,6 +257,56 @@ export class WorkspaceController extends Service implements IWorkspaces {
   ): Promise<WorkspaceView> {
     const result = await this.model.insertSessionBefore(workspaceId, sessionId, beforeSessionId)
     if (!result.ok) throw commandError('move', result.error)
+    return result.value.workspace
+  }
+
+  async createGroup(title: string): Promise<WorkspaceGroupView> {
+    const result = await this.model.createGroup(title)
+    if (!result.ok) throw new WorkspaceCommandError('group create', result.error)
+    return result.value.group
+  }
+
+  async renameGroup(groupId: GroupId, title: string): Promise<WorkspaceGroupView> {
+    const result = await this.model.renameGroup(groupId, title)
+    if (!result.ok) throw new WorkspaceCommandError('group rename', result.error)
+    return result.value.group
+  }
+
+  async deleteGroup(groupId: GroupId): Promise<void> {
+    const result = await this.model.deleteGroup(groupId)
+    if (!result.ok) throw new WorkspaceCommandError('group delete', result.error)
+  }
+
+  async moveToGroup(workspaceId: WorkspaceId, groupId?: GroupId): Promise<void> {
+    const result = await this.model.moveToGroup(workspaceId, groupId)
+    if (!result.ok) throw new WorkspaceCommandError('group move', result.error)
+  }
+
+  async createFolder(workspaceId: WorkspaceId, title: string): Promise<WorkspaceFolderView> {
+    const result = await this.model.createFolder(workspaceId, title)
+    if (!result.ok) throw new WorkspaceCommandError('folder create', result.error)
+    return result.value.folder
+  }
+
+  async renameFolder(workspaceId: WorkspaceId, folderId: FolderId, title: string): Promise<WorkspaceView> {
+    const result = await this.model.renameFolder(workspaceId, folderId, title)
+    if (!result.ok) throw new WorkspaceCommandError('folder rename', result.error)
+    return result.value.workspace
+  }
+
+  async deleteFolder(workspaceId: WorkspaceId, folderId: FolderId): Promise<WorkspaceView> {
+    const result = await this.model.deleteFolder(workspaceId, folderId)
+    if (!result.ok) throw new WorkspaceCommandError('folder delete', result.error)
+    return result.value.workspace
+  }
+
+  async moveSessionToFolder(
+    workspaceId: WorkspaceId,
+    sessionId: SessionId,
+    folderId?: FolderId,
+  ): Promise<WorkspaceView> {
+    const result = await this.model.moveSessionToFolder(workspaceId, sessionId, folderId)
+    if (!result.ok) throw new WorkspaceCommandError('folder move', result.error)
     return result.value.workspace
   }
 }

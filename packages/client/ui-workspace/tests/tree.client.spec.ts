@@ -11,8 +11,23 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { SessionProjectionSnapshot } from '@deepseek-ai/dsh-api-session-controller/client'
 import {
   type ArchivedFilter,
-  deriveFlat, deriveGroups, deriveSearchResults, orderByRecency, owningGroupKey, owningParentFolder,
-  pinCurrentBlank, reconcileManualOrder, sessionMemberIds, visibleSessionIds, workspaceLabel, UNGROUPED_KEY,
+  deriveFlat,
+  deriveGroups,
+  deriveSearchResults,
+  orderByRecency,
+  owningGroupKey,
+  owningParentFolder,
+  pinCurrentBlank,
+  reconcileManualOrder,
+  sessionMemberIds,
+  visibleSessionIds,
+  workspaceLabel,
+  UNGROUPED_KEY,
+  deriveWorkspaceHierarchy,
+  folderExpansionKey,
+  ungroupedExpansionKey,
+  workspaceExpansionKey,
+  workspaceGroupExpansionKey,
 } from '../src/client/tree.ts'
 import { createWorkspaceViewStore } from '../src/client/stores.ts'
 
@@ -76,7 +91,8 @@ const branchedList = (
 }
 const workspace = (id: string, sessionIds: string[], title = id): WorkspaceView => ({
   workspaceId: wid(id), path: `/projects/${id}`, title,
-  sessionIds: sessionIds.map(sid), createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+  sessionIds: sessionIds.map(sid), folders: [],
+  createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
 })
 const view = (expandedGroups: readonly string[] = [], ungroupedOrder?: readonly string[]) => ({
   expandedGroups,
@@ -556,6 +572,71 @@ describe('deriveGroups', () => {
   })
 })
 
+describe('deriveWorkspaceHierarchy', () => {
+  it('places every Workspace once and partitions its sessions between root and folders', () => {
+    const sessions = list(summary('root', 3), summary('filed', 2), summary('loose', 1))
+    const alpha = {
+      ...workspace('alpha', ['root', 'filed'], 'Alpha'),
+      folders: [{
+        folderId: 'folder' as import('@deepseek-ai/dsh-api-workspace-controller/client').FolderId,
+        title: 'Filed', sessionIds: [sid('filed')],
+        createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+      }],
+    }
+    const beta = workspace('beta', [], 'Beta')
+    const rows = deriveWorkspaceHierarchy(sessions, [alpha, beta], {
+      topLevelWorkspaceIds: [beta.workspaceId],
+      groups: [{ groupId: 'group' as import('@deepseek-ai/dsh-api-workspace-controller/client').GroupId, title: 'Group', workspaceIds: [alpha.workspaceId] }],
+    }, noArchive, noAttention, {
+      expandedGroups: [
+        workspaceGroupExpansionKey('group'), workspaceExpansionKey(alpha.workspaceId),
+        folderExpansionKey(alpha.workspaceId, 'folder'), ungroupedExpansionKey(),
+      ],
+    })
+
+    expect(rows.map(row => row.kind === 'group' ? row.title : row.kind === 'workspace' ? row.workspace.title : 'Ungrouped'))
+      .toEqual(['Group', 'Beta', 'Ungrouped'])
+    const group = rows[0]!
+    expect(group.kind).toBe('group')
+    if (group.kind !== 'group') {
+      throw new Error('expected group')
+    }
+    const alphaNode = group.workspaces[0]!
+    expect(alphaNode.root.sessions.map(session => session.id)).toEqual([sid('root')])
+    expect(alphaNode.folders[0]!.sessions.map(session => session.id)).toEqual([sid('filed')])
+  })
+
+  it('suppresses corrupt and duplicate folder references without losing root sessions', () => {
+    const alpha = {
+      ...workspace('alpha', ['one', 'two']),
+      folders: [
+        {
+          folderId: 'first' as import('@deepseek-ai/dsh-api-workspace-controller/client').FolderId,
+          title: 'First', sessionIds: [sid('one'), sid('foreign')],
+          createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+        {
+          folderId: 'second' as import('@deepseek-ai/dsh-api-workspace-controller/client').FolderId,
+          title: 'Second', sessionIds: [sid('one'), sid('two')],
+          createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    }
+    const rows = deriveWorkspaceHierarchy(list(summary('one', 2), summary('two', 1)), [alpha], {
+      topLevelWorkspaceIds: [alpha.workspaceId], groups: [],
+    }, noArchive, noAttention, {
+      expandedGroups: [workspaceExpansionKey(alpha.workspaceId), folderExpansionKey(alpha.workspaceId, 'first'), folderExpansionKey(alpha.workspaceId, 'second')],
+    })
+    const node = rows[0]!
+    expect(node.kind).toBe('workspace')
+    if (node.kind !== 'workspace') {
+      throw new Error('expected workspace')
+    }
+    expect(node.root.sessions).toEqual([])
+    expect(node.folders.map(folder => folder.sessions.map(session => session.id))).toEqual([[sid('one')], [sid('two')]])
+  })
+})
+
 describe('deriveFlat', () => {
   it('renders ordinary forks in the supplied order regardless of timestamps', () => {
     const parent = summary('parent', 10)
@@ -919,7 +1000,7 @@ describe('createWorkspaceViewStore', () => {
     store.actions.setSessionOrder('alpha', ['alpha-session'], {})
     store.actions.setSessionOrder('deleted', ['deleted-session'], {})
 
-    store.actions.retainAccountKeys(['', 'alpha'])
+    store.actions.retainAccountKeys(['', 'alpha'], ['', 'alpha'])
 
     const snapshot = store.getSnapshot()
     expect(snapshot.groupExpansion).toEqual({ '': true, alpha: true })

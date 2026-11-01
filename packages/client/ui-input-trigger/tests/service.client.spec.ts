@@ -24,6 +24,7 @@ interface PendingFetch {
   resolve: (items: readonly InputTriggerCandidate[]) => void
   reject: (err: unknown) => void
   query: string
+  origin?: 'launcher' | undefined
   signal: AbortSignal
   session: ClientSessionContext
 }
@@ -36,7 +37,7 @@ function deferredSource(trigger: TriggerChar, name: string, over: Partial<InputT
     trigger,
     name,
     candidates: (session, req) => new Promise<readonly InputTriggerCandidate[]>((resolve, reject) => {
-      pending.push({ resolve, reject, query: req.query, signal: req.signal, session })
+      pending.push({ resolve, reject, query: req.query, origin: req.origin, signal: req.signal, session })
     }),
     onPick: () => undefined,
     warm,
@@ -47,7 +48,11 @@ function deferredSource(trigger: TriggerChar, name: string, over: Partial<InputT
 
 /** Source whose candidates resolve immediately; picks are recorded. */
 function readySource(
-  trigger: TriggerChar, name: string, items: readonly InputTriggerCandidate[], onPick?: (pick: InputTriggerPick) => PickOutcome,
+  trigger: TriggerChar,
+  name: string,
+  items: readonly InputTriggerCandidate[],
+  onPick?: (pick: InputTriggerPick) => PickOutcome,
+  over: Partial<InputTriggerSource> = {},
 ) {
   const picks: InputTriggerPick[] = []
   const source: InputTriggerSource = {
@@ -58,6 +63,7 @@ function readySource(
       picks.push(pick)
       return onPick?.(pick)
     },
+    ...over,
   }
   return { source, picks }
 }
@@ -111,6 +117,24 @@ describe('registerSource', () => {
     expect(() => inputTriggers.registerSource(readySource('/', 'command', []).source))
       .toThrow(/already registered/)
     inputTriggers.registerSource(readySource('@', 'command', []).source)
+  })
+
+  it('sorts lower source orders first, making their first item the default Enter pick', async () => {
+    const { inputTriggers, mint } = await serviceBench()
+    const reference = readySource('@', 'reference', [{ name: 'README.md' }])
+    const expert = readySource('@', 'expert', [{ name: 'reviewer' }], undefined, { order: -1 })
+    inputTriggers.registerSource(reference.source)
+    inputTriggers.registerSource(expert.source)
+    const controller = inputTriggers.sessionOf(mint('a').actx)
+
+    controller.track('@', 1, { tier: 'plain' }, 1)
+    await tick()
+
+    expect(controller.menu.getSnapshot().groups.map(group => group.source)).toEqual(['expert', 'reference'])
+    expect(controller.menu.getSnapshot().highlight).toEqual({ source: 'expert', index: 0 })
+    expect(controller.arbitrate('enter', false)).toBe('pick-highlighted')
+    expect(expert.picks.map(pick => pick.candidate.name)).toEqual(['reviewer'])
+    expect(reference.picks).toEqual([])
   })
 
   it('disposal frees the name and drops the live menu group in every session controller', async () => {
@@ -477,6 +501,312 @@ describe('programmatic source launcher', () => {
     await tick()
     expect(controller.launcher.getSnapshot()).toBeNull()
     expect(controller.menu.getSnapshot().groups.map(group => group.source)).toEqual(['command', 'skill'])
+  })
+
+  it('passes launcher provenance through refreshes and clears it for typed tracking', async () => {
+    const command = deferredSource('/', 'command')
+    const skill = deferredSource('/', 'skill')
+    const { controller } = controllerBench([command.source, skill.source])
+    const hit = {
+      trigger: '/' as const,
+      query: '',
+      quoted: false,
+      position: 'leading' as const,
+      span: { start: 0, end: 0, draftRev: 1 },
+    }
+
+    controller.toggleSource('command', hit)
+    expect(command.pending[0]!.origin).toBe('launcher')
+    controller.refreshOpenMenu()
+    expect(command.pending[0]!.signal.aborted).toBe(true)
+    expect(command.pending[1]!.origin).toBe('launcher')
+    expect(skill.pending).toEqual([])
+
+    controller.track('/g', 2, { tier: 'plain' }, 2)
+    expect(command.pending[1]!.signal.aborted).toBe(true)
+    expect(command.pending[2]!.origin).toBeUndefined()
+    expect(skill.pending[0]!.origin).toBeUndefined()
+  })
+})
+
+describe('submenu flyout', () => {
+  const hit = {
+    trigger: '/' as const,
+    query: '',
+    quoted: false,
+    position: 'leading' as const,
+    span: { start: 0, end: 0, draftRev: 3 },
+  }
+
+  /** A command source whose first row owns a flyout; each submenu read is deferred by hand. */
+  function flyoutSource() {
+    const reads: Array<{
+      parent: InputTriggerCandidate
+      signal: AbortSignal
+      resolve: (rows: readonly InputTriggerCandidate[]) => void
+      reject: (error: unknown) => void
+    }> = []
+    const picks: InputTriggerPick[] = []
+    const source: InputTriggerSource = {
+      trigger: '/',
+      name: 'command',
+      candidates: () => Promise.resolve([{ name: 'expert', submenu: true }, { name: 'goal' }]),
+      submenu: (_session, parent, signal) => new Promise((resolve, reject) => {
+        reads.push({ parent, signal, resolve, reject })
+      }),
+      onPick: (pick) => {
+        picks.push(pick)
+        return undefined
+      },
+    }
+    return { source, reads, picks }
+  }
+
+  async function opened() {
+    const bench = flyoutSource()
+    const harness = controllerBench([bench.source])
+    harness.controller.toggleSource('command', hit)
+    await tick()
+    return { ...bench, ...harness }
+  }
+
+  it('opens on hover of a submenu row and lists the source rows afresh each time', async () => {
+    const { controller, reads } = await opened()
+    controller.hover('command', 0)
+    expect(controller.flyout.getSnapshot()).toMatchObject({ source: 'command', parent: 0, status: 'pending', highlight: null })
+    expect(reads[0]!.parent).toMatchObject({ name: 'expert' })
+    reads[0]!.resolve([{ name: 'alpha' }, { name: 'beta' }])
+    await tick()
+    expect(controller.flyout.getSnapshot()).toMatchObject({ status: 'ready', items: [{ name: 'alpha' }, { name: 'beta' }], highlight: null })
+
+    controller.hover('command', 1)
+    expect(controller.flyout.getSnapshot()).toBeNull()
+    expect(reads[0]!.signal.aborted).toBe(true)
+    controller.hover('command', 0)
+    expect(reads).toHaveLength(2)
+  })
+
+  it('does not reopen a flyout already open for the hovered row', async () => {
+    const { controller, reads } = await opened()
+    controller.hover('command', 0)
+    controller.hover('command', 0)
+    expect(reads).toHaveLength(1)
+  })
+
+  it('picks a flyout row through onPick with the parent row and closes the menu', async () => {
+    const { controller, reads, picks } = await opened()
+    controller.hover('command', 0)
+    reads[0]!.resolve([{ name: 'alpha' }])
+    await tick()
+    controller.pickFlyout(0)
+    expect(picks).toHaveLength(1)
+    expect(picks[0]).toMatchObject({
+      candidate: { name: 'alpha' },
+      parent: { name: 'expert', submenu: true },
+      action: 'pick',
+      span: hit.span,
+    })
+    expect(controller.menu.getSnapshot().open).toBe(false)
+    expect(controller.flyout.getSnapshot()).toBeNull()
+  })
+
+  it('ignores a flyout pick while the rows are loading', async () => {
+    const { controller, picks } = await opened()
+    controller.hover('command', 0)
+    controller.pickFlyout(0)
+    expect(picks).toHaveLength(0)
+    expect(controller.menu.getSnapshot().open).toBe(true)
+  })
+
+  it('moves the flyout highlight with hoverFlyout', async () => {
+    const { controller, reads } = await opened()
+    controller.hover('command', 0)
+    reads[0]!.resolve([{ name: 'alpha' }, { name: 'beta' }])
+    await tick()
+    controller.hoverFlyout(1)
+    expect(controller.flyout.getSnapshot()?.highlight).toBe(1)
+    controller.hoverFlyout(9)
+    expect(controller.flyout.getSnapshot()?.highlight).toBe(1)
+  })
+
+  it('enters the flyout from the keyboard: Enter opens, arrows cycle, Enter picks', async () => {
+    const { controller, reads, picks } = await opened()
+    expect(controller.arbitrate('enter', false)).toBe('consumed')
+    expect(controller.flyout.getSnapshot()).toMatchObject({ status: 'pending' })
+    expect(picks).toHaveLength(0)
+    reads[0]!.resolve([{ name: 'alpha' }, { name: 'beta' }])
+    await tick()
+    expect(controller.flyout.getSnapshot()?.highlight).toBe(0)
+
+    expect(controller.arbitrate('down', false)).toBe('consumed')
+    expect(controller.flyout.getSnapshot()?.highlight).toBe(1)
+    expect(controller.arbitrate('down', false)).toBe('consumed')
+    expect(controller.flyout.getSnapshot()?.highlight).toBe(0)
+    expect(controller.arbitrate('up', false)).toBe('consumed')
+    expect(controller.flyout.getSnapshot()?.highlight).toBe(1)
+    expect(controller.menu.getSnapshot().highlight).toEqual({ source: 'command', index: 0 })
+
+    expect(controller.arbitrate('tab', false)).toBe('pick-highlighted')
+    expect(picks[0]).toMatchObject({ candidate: { name: 'beta' }, parent: { name: 'expert' } })
+  })
+
+  it('a pointer pick of a submenu row opens its flyout instead of settling the row', async () => {
+    const { controller, reads, picks } = await opened()
+    controller.pick('command', 0)
+    expect(picks).toHaveLength(0)
+    expect(controller.menu.getSnapshot().open).toBe(true)
+    reads[0]!.resolve([{ name: 'alpha' }])
+    await tick()
+    expect(controller.flyout.getSnapshot()).toMatchObject({ status: 'ready', highlight: 0 })
+    controller.pick('command', 1)
+    expect(picks).toHaveLength(1)
+    expect(picks[0]).toMatchObject({ candidate: { name: 'goal' } })
+  })
+
+  it('Tab on a submenu row opens the flyout instead of picking the row', async () => {
+    const { controller, picks } = await opened()
+    expect(controller.arbitrate('tab', false)).toBe('consumed')
+    expect(controller.flyout.getSnapshot()).not.toBeNull()
+    expect(picks).toHaveLength(0)
+  })
+
+  it('Enter on a hover-opened flyout highlights its first row; a second Enter picks it', async () => {
+    const { controller, reads, picks } = await opened()
+    controller.hover('command', 0)
+    reads[0]!.resolve([{ name: 'alpha' }])
+    await tick()
+    expect(controller.arbitrate('enter', false)).toBe('consumed')
+    expect(controller.flyout.getSnapshot()?.highlight).toBe(0)
+    expect(controller.arbitrate('enter', false)).toBe('pick-highlighted')
+    expect(picks[0]).toMatchObject({ candidate: { name: 'alpha' } })
+  })
+
+  it('Escape closes only the flyout; a second Escape closes the menu', async () => {
+    const { controller, reads } = await opened()
+    controller.hover('command', 0)
+    reads[0]!.resolve([{ name: 'alpha' }])
+    await tick()
+    expect(controller.arbitrate('escape', false)).toBe('consumed')
+    expect(controller.flyout.getSnapshot()).toBeNull()
+    expect(controller.menu.getSnapshot().open).toBe(true)
+    expect(controller.arbitrate('escape', false)).toBe('consumed')
+    expect(controller.menu.getSnapshot().open).toBe(false)
+  })
+
+  it('arrow keys on a hover-opened flyout move the menu highlight and close the flyout', async () => {
+    const { controller, reads } = await opened()
+    controller.hover('command', 0)
+    reads[0]!.resolve([{ name: 'alpha' }])
+    await tick()
+    expect(controller.arbitrate('down', false)).toBe('consumed')
+    expect(controller.menu.getSnapshot().highlight).toEqual({ source: 'command', index: 1 })
+    expect(controller.flyout.getSnapshot()).toBeNull()
+  })
+
+  it('keeps an empty ready flyout open and picks nothing from it', async () => {
+    const { controller, reads, picks } = await opened()
+    controller.hover('command', 0)
+    reads[0]!.resolve([])
+    await tick()
+    expect(controller.flyout.getSnapshot()).toMatchObject({ status: 'ready', items: [], highlight: null })
+    expect(controller.arbitrate('enter', false)).toBe('consumed')
+    expect(picks).toHaveLength(0)
+  })
+
+  it('keeps a visible failed flyout open and retries with a new source read', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      const { controller, reads } = await opened()
+      controller.hover('command', 0)
+      reads[0]!.reject(new Error('offline'))
+      await tick()
+      await tick()
+      expect(controller.flyout.getSnapshot()).toMatchObject({ status: 'failed', items: [], highlight: null })
+      expect(controller.menu.getSnapshot().open).toBe(true)
+      expect(errorSpy).toHaveBeenCalled()
+
+      controller.hover('command', 0)
+      expect(reads).toHaveLength(2)
+      expect(controller.flyout.getSnapshot()).toMatchObject({ status: 'pending' })
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('drops a stale failed read after retrying the same flyout', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      const { controller, reads } = await opened()
+      controller.hover('command', 0)
+      controller.hover('command', 1)
+      controller.hover('command', 0)
+      reads[0]!.reject(new Error('offline'))
+      await tick()
+      await tick()
+      expect(controller.flyout.getSnapshot()).toMatchObject({ status: 'pending' })
+      expect(errorSpy).not.toHaveBeenCalled()
+      reads[1]!.resolve([{ name: 'alpha' }])
+      await tick()
+      expect(controller.flyout.getSnapshot()).toMatchObject({ status: 'ready', items: [{ name: 'alpha' }] })
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('closes a failed flyout with Escape without closing the menu', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      const { controller, reads } = await opened()
+      controller.hover('command', 0)
+      reads[0]!.reject(new Error('offline'))
+      await tick()
+      await tick()
+      expect(controller.arbitrate('escape', false)).toBe('consumed')
+      expect(controller.flyout.getSnapshot()).toBeNull()
+      expect(controller.menu.getSnapshot().open).toBe(true)
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('drops a late read after the flyout closed', async () => {
+    const { controller, reads } = await opened()
+    controller.hover('command', 0)
+    controller.hover('command', 1)
+    reads[0]!.resolve([{ name: 'alpha' }])
+    await tick()
+    expect(controller.flyout.getSnapshot()).toBeNull()
+  })
+
+  it('closes with the menu', async () => {
+    const { controller, reads } = await opened()
+    controller.hover('command', 0)
+    reads[0]!.resolve([{ name: 'alpha' }])
+    await tick()
+    controller.dismiss()
+    expect(controller.flyout.getSnapshot()).toBeNull()
+    expect(reads[0]!.signal.aborted).toBe(true)
+  })
+
+  it('does not open for a row without submenu, or for a source without a submenu read', async () => {
+    const plain = readySource('/', 'command', [{ name: 'expert', submenu: true }, { name: 'goal' }])
+    const { controller } = controllerBench([plain.source])
+    controller.toggleSource('command', hit)
+    await tick()
+    controller.hover('command', 0)
+    expect(controller.flyout.getSnapshot()).toBeNull()
+    const { controller: other, reads } = await opened()
+    other.hover('command', 1)
+    expect(other.flyout.getSnapshot()).toBeNull()
+    expect(reads).toHaveLength(0)
+  })
+
+  it('ignores flyout picks and hovers while nothing is open', async () => {
+    const { controller, picks } = await opened()
+    controller.pickFlyout(0)
+    controller.hoverFlyout(0)
+    expect(picks).toHaveLength(0)
+    expect(controller.flyout.getSnapshot()).toBeNull()
   })
 })
 

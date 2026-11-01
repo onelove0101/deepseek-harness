@@ -30,6 +30,8 @@ export type PopupSearchMode = 'substring' | 'fuzzy-label'
 export interface SelectOption {
   readonly id: string
   readonly label: string
+  /** Opaque business-owned selection context, preserved only for a flyout pick. */
+  readonly value?: string
   /** Optional short marker rendered as a superscript beside the label. */
   readonly badge?: string
   readonly detail?: string
@@ -75,6 +77,28 @@ export interface PopupSelectSpec {
 }
 
 /**
+ * Rows a command row lists in a flyout beside it while hovered or entered
+ * (the Add menu's nested choices). Selecting a row consumes the trigger token
+ * and runs `onSelect`; the row's `badge`, `active`, and `confirmation` are not
+ * shown in a flyout, so a choice that needs them belongs in a popupSelect.
+ */
+export interface FlyoutSpec {
+  /**
+   * Read the rows afresh each time the flyout opens.
+   * @param session - the ClientSessionContext captured at open.
+   * @param signal - aborted when the flyout closes.
+   * @returns the rows in display order; `id` is the pick payload, `label` the title, `detail` the description.
+   */
+  options(session: ClientSessionContext, signal: AbortSignal): Promise<readonly SelectOption[]>
+  /**
+   * Apply one selection after the trigger token was consumed.
+   * @param option - the selected row, rebuilt with its `id`, `label`, `detail`, and opaque `value` when supplied.
+   * @param session - the ClientSessionContext captured at pick.
+   */
+  onSelect(option: SelectOption, session: ClientSessionContext): void | Promise<void>
+}
+
+/**
  * Business registration for the action command kind: a bare invocation
  * consumes the trigger token and runs one client-side callback. It submits nothing, so an
  * attachment-carrying draft never refuses it.
@@ -111,6 +135,31 @@ export interface CommandContribution {
   available(session: ClientSessionContext): boolean
   /** The command's UI behavior. */
   readonly ui: CommandUiSpec
+  /**
+   * Nested choices shown in a flyout beside the row; the row itself then opens
+   * the flyout instead of running `ui`, which stays the typed `/name` behavior.
+   */
+  readonly flyout?: FlyoutSpec
+}
+
+/**
+ * A Composer Add-menu row that has no slash-command behavior. It appears only
+ * when the Composer opens the Add menu, and must expose a flyout so selecting
+ * its parent can never consume a typed `/name` token or run an action.
+ */
+export interface AddContribution {
+  /** Stable row name, unique across Add and slash contributions. */
+  readonly name: string
+  /** Localized Add-menu row title. */
+  label(): string
+  /** Localized Add-menu row description. */
+  description(): string
+  /** Optional glyph from the shared icon set. */
+  readonly icon?: ComponentType<IconProps>
+  /** Capability filter, called with a fresh projection per candidate pass. */
+  available(session: ClientSessionContext): boolean
+  /** Nested choices shown beside this Add-menu row. */
+  readonly flyout: FlyoutSpec
 }
 
 /**
@@ -138,6 +187,11 @@ export interface CommandUiContract {
    * names throw at registration.
    */
   register(contribution: CommandContribution): () => void
+  /**
+   * Register one Add-menu-only row; effect disposer. Duplicate names across
+   * Add-only and slash contributions throw at registration.
+   */
+  registerAdd(contribution: AddContribution): () => void
   /**
    * Hang a bare-invocation decoration on one host command; effect disposer.
    * Duplicate names throw at registration.

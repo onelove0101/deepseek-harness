@@ -28,7 +28,7 @@ import type {
   CandidateRequest, ClientSessionContext, CommandClaim, PickOutcome, InputTriggerCandidate, InputTriggerPick,
   SubmitAttachment, SubmitEnvelope, SubmitOutcome,
 } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
-import type { CommandContribution, CommandDecoration, CommandUiContract } from './contract.ts'
+import type { AddContribution, CommandContribution, CommandDecoration, CommandUiContract } from './contract.ts'
 import type { CommandDescriptor } from './directory.ts'
 import { CommandDirectory } from './directory.ts'
 import { PopupSelectController } from './popup.ts'
@@ -68,6 +68,7 @@ function submittedCommandName(line: string): string {
 /** Live mutable state in one holder (service methods run behind the caller-ctx tracker). */
 interface LiveState {
   readonly contributions: Map<string, CommandContribution>
+  readonly adds: Map<string, AddContribution>
   readonly decorations: Map<string, CommandDecoration>
   readonly popups: WeakMapWithValues<SessionBinding, PopupSelectController<ClientSessionContext>>
 }
@@ -79,6 +80,7 @@ export class CommandUiRuntime extends Service implements CommandUiContract {
   private readonly directory: CommandDirectory
   private readonly live: LiveState = {
     contributions: new Map(),
+    adds: new Map(),
     decorations: new Map(),
     popups: new WeakMapWithValues(),
   }
@@ -116,6 +118,7 @@ export class CommandUiRuntime extends Service implements CommandUiContract {
       trigger: '/',
       name: 'command',
       candidates: (session, req) => this.candidates(session, req),
+      submenu: (session, parent, signal) => this.submenu(session, parent, signal),
       onPick: pick => this.dispatch(pick),
       matchSpace: (session, token) => this.matchSpace(session, token),
       matchClaim: (session, token, signal) => this.matchClaim(session, token, signal),
@@ -138,13 +141,31 @@ export class CommandUiRuntime extends Service implements CommandUiContract {
    */
   register(contribution: CommandContribution): () => void {
     const dispose = this.ctx.effect(() => {
-      const { contributions } = this.live
-      if (contributions.has(contribution.name)) {
+      const { contributions, adds } = this.live
+      if (contributions.has(contribution.name) || adds.has(contribution.name)) {
         throw new Error(`ui-commands: duplicate contribution for /${contribution.name}`)
       }
       contributions.set(contribution.name, contribution)
       return () => { contributions.delete(contribution.name) }
     }, 'command.register()')
+    return () => { void dispose() }
+  }
+
+  /**
+   * Register one Composer Add-menu-only contribution; effect disposer (rides
+   * the caller's fiber). Its name cannot shadow a slash contribution.
+   * @param contribution - the Add-menu row and its flyout.
+   * @returns the disposer removing the registration.
+   */
+  registerAdd(contribution: AddContribution): () => void {
+    const dispose = this.ctx.effect(() => {
+      const { contributions, adds } = this.live
+      if (contributions.has(contribution.name) || adds.has(contribution.name)) {
+        throw new Error(`ui-commands: duplicate contribution for /${contribution.name}`)
+      }
+      adds.set(contribution.name, contribution)
+      return () => { adds.delete(contribution.name) }
+    }, 'command.registerAdd()')
     return () => { void dispose() }
   }
 
@@ -238,19 +259,86 @@ export class CommandUiRuntime extends Service implements CommandUiContract {
       if (seen.has(contribution.name)) {
         throw new Error(`ui-commands: contribution /${contribution.name} collides with a host command`)
       }
+      seen.add(contribution.name)
       rows.push({
         name: contribution.name,
         ...(contribution.label === undefined ? {} : { label: contribution.label() }),
         ...(contribution.description === undefined ? {} : { description: contribution.description() }),
         ...(contribution.icon === undefined ? {} : { icon: contribution.icon }),
+        ...(contribution.flyout === undefined ? {} : { submenu: true }),
       })
+    }
+    if (req.origin === 'launcher') {
+      for (const contribution of this.live.adds.values()) {
+        if (!contribution.available(session)) continue
+        if (seen.has(contribution.name)) {
+          throw new Error(`ui-commands: Add contribution /${contribution.name} collides with a host or slash command`)
+        }
+        seen.add(contribution.name)
+        rows.push({
+          name: contribution.name,
+          label: contribution.label(),
+          description: contribution.description(),
+          ...(contribution.icon === undefined ? {} : { icon: contribution.icon }),
+          submenu: true,
+        })
+      }
     }
     const visible = rows.filter(c => req.position === 'leading' || c.hint === undefined)
     return req.query === '' ? sectionRows(visible, this.t) : rankByName(visible, req.query)
   }
 
+  /** Resolve a flyout owner from a slash contribution or launcher-only Add contribution. */
+  private flyoutFor(name: string): { readonly available: (session: ClientSessionContext) => boolean; readonly flyout: AddContribution['flyout'] } | undefined {
+    const contribution = this.live.contributions.get(name)
+    if (contribution?.flyout !== undefined) {
+      return { available: contribution.available, flyout: contribution.flyout }
+    }
+    const add = this.live.adds.get(name)
+    if (add !== undefined) {
+      return { available: add.available, flyout: add.flyout }
+    }
+    return undefined
+  }
+
+  /** Flyout rows of one contribution, read afresh per open; a vanished or unavailable contribution lists none. */
+  private async submenu(
+    session: ClientSessionContext,
+    parent: InputTriggerCandidate,
+    signal: AbortSignal,
+  ): Promise<readonly InputTriggerCandidate[]> {
+    const contribution = this.flyoutFor(parent.name)
+    if (contribution === undefined || !contribution.available(session)) return []
+    const options = await contribution.flyout.options(session, signal)
+    return options.map(option => ({
+      name: option.id,
+      label: option.label,
+      ...(option.value === undefined ? {} : { value: option.value }),
+      ...(option.detail === undefined ? {} : { description: option.detail }),
+    }))
+  }
+
+  /** Flyout pick: consume the trigger token, then hand the selection to the contribution. */
+  private dispatchFlyout(pick: InputTriggerPick, parent: InputTriggerCandidate): PickOutcome {
+    const contribution = this.flyoutFor(parent.name)
+    if (contribution === undefined || !contribution.available(pick.session)) return undefined
+    const option = {
+      id: pick.candidate.name,
+      label: pick.candidate.label ?? pick.candidate.name,
+      ...(pick.candidate.value === undefined ? {} : { value: pick.candidate.value }),
+      ...(pick.candidate.description === undefined ? {} : { detail: pick.candidate.description }),
+    }
+    this.consumeVia(pick.session.sessionId, { via: 'menu', span: pick.span })
+    const { onSelect } = contribution.flyout
+    void Promise.resolve().then(() => onSelect(option, pick.session)).catch((error: unknown) => {
+      this.noticeFor(pick.session.sessionId, 'error', error instanceof Error ? error.message : String(error))
+    })
+    return 'handled'
+  }
+
   /** Decision table, menu column: contribution/decorated-host → popup or action; host input → claim; host bare → detached execute. */
   private dispatch(pick: InputTriggerPick): PickOutcome {
+    if (pick.parent !== undefined) return this.dispatchFlyout(pick, pick.parent)
     const name = pick.candidate.name
     const contribution = this.live.contributions.get(name)
     if (contribution !== undefined && contribution.available(pick.session)) {

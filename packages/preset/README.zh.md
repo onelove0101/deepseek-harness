@@ -9,7 +9,7 @@ kind: "package-group"
 
 ## 概述
 
-本组通过普通 Cordis 声明定义 Agent 能力，并管理会话选择和运行时代际。Host 共享 Agent loop；各 Agent 使用自己选定代际的工具、提示词和技能。
+本组通过普通 Cordis 声明定义 Agent 能力，并管理会话选择和运行时代际。Host 共享 Agent loop；各 Agent 使用自己选定代际的工具、提示词和技能。 `expert` 增加按用户保存、由开头的 `@name` 调用的 Expert。
 
 ## 目录
 
@@ -24,6 +24,7 @@ kind: "package-group"
 |---|---|---|
 | [agent-preset-registry](agent-preset-registry/README.zh.md) | 选择、代际保留和 profile 编辑 | `ctx.agentPresets` |
 | [agent-preset](agent-preset/README.zh.md) | 声明式子插件和元数据 | — |
+| [`expert`](expert/README.zh.md) | 按用户持久保存的 Expert，由开头的 `@name` 调用 | `ctx.experts` |
 | [persona](persona/README.zh.md) | 可组装的 Agent 人设 | — |
 
 <a id="related-documentation"></a>

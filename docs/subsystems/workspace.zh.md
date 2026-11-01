@@ -16,7 +16,7 @@
 type WorkspaceId = Branded<'WorkspaceId'>
 ```
 
-`WorkspaceId` 是[品牌化 id](core.zh.md#branded-ids)。路径标识与之分离：`realpathNormalize`（`fs.realpath`；尾部斜杠、`..` 与符号链接全部解析）是唯一的一套唯一性规范——工作区路径以规范化形式存储，唯一性即规范路径的字符串相等（指向已被拥有目录的符号链接会与之冲突），attach 时的会话 cwd 检查也走同一套规范。
+`WorkspaceId` 是[品牌化 id](core.zh.md#branded-ids)。`GroupId` 标识一个持久工作区组，`FolderId` 标识一个工作区内的逻辑会话文件夹。路径标识与之分离：`realpathNormalize`（`fs.realpath`；尾部斜杠、`..` 与符号链接全部解析）是唯一的一套唯一性规范——工作区路径以规范化形式存储，唯一性即规范路径的字符串相等（指向已被拥有目录的符号链接会与之冲突），attach 时的会话 cwd 检查也走同一套规范。
 
 ## 工作区实体
 
@@ -63,6 +63,9 @@ interface Workspace {
    */
   readonly sessionIds: readonly SessionId[]
 
+  /** Ordered logical Session folders; members are absent from the Workspace root. */
+  readonly folders: readonly WorkspaceFolder[]
+
   /**
    * Replace the display title durably.
    * @param title - New title; any string, duplicates across workspaces allowed.
@@ -108,6 +111,36 @@ interface Workspace {
   detachSession(sessionId: SessionId): Promise<void>
 
   /**
+   * Create one logical Folder under this Workspace. It never creates a filesystem directory.
+   * @param title - Folder display title.
+   * @returns the newly durable Folder.
+   */
+  createFolder(title: string): Promise<WorkspaceFolder>
+
+  /**
+   * Replace one logical Folder's display title.
+   * @param folderId - Folder to rename.
+   * @param title - New Folder display title.
+   * @returns resolution after durability.
+   */
+  setFolderTitle(folderId: FolderId, title: string): Promise<void>
+
+  /**
+   * Delete one logical Folder and return its Sessions to the Workspace root.
+   * @param folderId - Folder to delete.
+   * @returns resolution after durability.
+   */
+  deleteFolder(folderId: FolderId): Promise<void>
+
+  /**
+   * File an accounted Session in a logical Folder, or return it to the Workspace root.
+   * @param sessionId - Accounted Session to file.
+   * @param folderId - Destination Folder; omitted returns the Session to the root.
+   * @returns resolution after durability.
+   */
+  moveSessionToFolder(sessionId: SessionId, folderId?: FolderId): Promise<void>
+
+  /**
    * Live directory check, uncached: whether {@link path} currently exists and
    * is a directory. A missing directory never mutates the record — the
    * directory may only be temporarily moved.
@@ -117,11 +150,13 @@ interface Workspace {
 }
 ```
 
-所有权的真源是记录中有序的 `sessionIds`，绝不从会话 cwd 派生。成员资格将记录的 header cwd 与工作区路径校验；已有候选的完全限定 cwd 在路径解析或目录 stat 时返回 `ENOENT`，仍保留其归属。这会保留目录缺失或符号链接失效时的记账关系，但不会接纳新会话。失败的写入会拒绝（`insertSessionBefore` 的账本错误以 `WorkspaceMoveInvalidError` 拒绝，存储失败以普通错误拒绝）；每次被接受的变更都盖上 `updatedAt` 时间戳，并持久修剪不再通过成员资格检查的候选项。
+所有权的真源是记录中有序的 `sessionIds`，绝不从会话 cwd 派生。成员资格将记录的 header cwd 与工作区路径校验；已有候选的完全限定 cwd 在路径解析或目录 stat 时返回 `ENOENT`，仍保留其归属。这会保留目录缺失或符号链接失效时的记账关系，但不会接纳新会话。失败的写入会拒绝（`insertSessionBefore` 的账本错误以 `WorkspaceMoveInvalidError` 拒绝，存储失败以普通错误拒绝）；每次被接受的变更都盖上 `updatedAt` 时间戳，并持久修剪不再通过成员资格检查的候选项。 文件夹只为展示划分这份已归属账本：未出现在任何文件夹的会话位于工作区根部，一个会话至多出现在一个文件夹中。归入不会改变会话 cwd、日志或工作区归属；删除文件夹会将其会话返回根部，不删除会话数据或文件系统内容。文件夹操作错误以 `WorkspaceFolderInvalidError` 拒绝。
 
 ## 注册表：`ctx.workspaceRegistry`
 
 `WorkspaceRegistry`（[签名](#ctxworkspaceregistry--workspaceregistry)）拥有注册与解析。`create(path, title?)` 要求完全限定路径并将其规范化，拒绝不存在的路径（原样传出原始 `ENOENT`）或非目录；当规范路径已被拥有时原样返回既有实体；否则创建一条标题为 `title ?? defaultWorkspaceTitle(path)` 的记录并前插到持久的注册表顺序中（不同规范路径可以共享同一显示标题，没有最终路径段时使用根路径拼写）。`get(id)` 与有序的 `list()` 是同步缓存读取；`resolveByPath(path)` 应用同一套完全限定 realpath 规范但不创建。`delete(id)` 只移除注册记录、顺序条目和会话账本——目录、用户文件、实时会话和已持久化日志一概不动，因此这些会话变为 Ungrouped（[参考](../../packages/workspace/workspace/README.zh.md)）；未知 id 返回 `false`。create 与 delete 会在其两次写入（记录 + 顺序）可能分叉之前先持久写入一个待定变更标记；启动时恰好解决被标记的那次变更——通过删除被标记的表行：这会补完被中断的 delete，并回滚被中断的 create（注册可以重建，因此回滚是安全方向）——而没有标记的顺序/表不一致则作为损坏大声失败。
+
+一个工作区组持有有序的工作区 id。注册表状态中的 `workspaceIds` 是顶层工作区顺序；一个工作区要么位于该顺序中，要么位于恰好一个组中。`createGroup`、`listGroups`、`getGroup`、`deleteGroup` 与 `moveToGroup` 管理这个持久层级。将工作区移入组会将其从顶层顺序移除，移出组则将其返回顶层。解散组会将其所有工作区返回顶层，而不改变其目录、文件、会话或会话历史。组转移使用注册表的待定变更记录，因此重启恢复会完成中断的转移。
 
 会话的 cwd 在创建时由创建者赋予，而不是由本注册表赋予——API 网关从所选工作区的 `path` 解析新会话的 cwd（回退到显式或默认 cwd），先创建会话使 cwd 落入其不可变的 [`SessionHeader`](persistence.zh.md#sessionheader--metadata-beside-the-log)，再调用 `attachSession`，后者会把已存储的 header cwd 与工作区路径重新校验一遍。首次成功启动时，注册表仅凭已持久化的 header（`id`、`cwd`、`createdAt`——绝不读事件正文）引导历史：把规范 cwd 有效的会话按目录分组为工作区，最新的排在最前；「已初始化」标记最后写入，因此被中断的引导可以安全续跑。引导只发生这一次：没有 cwd 的历史遗留会话保持 Ungrouped，此后创建的会话只能通过 `attachSession` 加入工作区。
 

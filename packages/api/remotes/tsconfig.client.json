@@ -50,6 +50,9 @@
       "path": "../../feedback/message-feedback"
     },
     {
+      "path": "../../preset/expert"
+    },
+    {
       "path": "../../host/plugin-inventory"
     },
     {

@@ -15,6 +15,12 @@ import type { TypertResource } from '@deepseek-ai/dsh-typert-protocol'
  */
 export type WorkspaceId = Branded<'WorkspaceId'>
 
+/** Identifies one workspace group record: a generated uuid, stable across renames. */
+export type GroupId = Branded<'GroupId'>
+
+/** Identifies one logical Session folder within a Workspace. */
+export type FolderId = Branded<'FolderId'>
+
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertResourceMap {
     /** One Workspace; the Workspace Controller registers its default `workspaceId` wire field. */
@@ -24,6 +30,20 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {
     /** No registration carries that Workspace identity. */
     'workspace/not-found': { readonly workspaceId: WorkspaceId }
+    /** No registration carries that Workspace group identity. */
+    'workspace/group-not-found': { readonly groupId: GroupId }
+    /**
+     * A group rename matched another group's title; unlike workspaces
+     * (path-keyed), groups are title-keyed display folders, so a duplicate
+     * title would make the move target ambiguous.
+     */
+    'workspace/group-name-conflict': { readonly title: string }
+    /** No folder in this Workspace carries that identity. */
+    'workspace/folder-not-found': { readonly workspaceId: WorkspaceId; readonly folderId: FolderId }
+    /** A Folder name repeated within one Workspace. */
+    'workspace/folder-name-conflict': { readonly workspaceId: WorkspaceId; readonly title: string }
+    /** A folder operation named an unowned Session or invalid filing target. */
+    'workspace/folder-move-invalid': { readonly workspaceId: WorkspaceId; readonly sessionId: SessionId }
   }
 }
 
@@ -57,6 +77,53 @@ export interface SessionActivity {
   readonly kind: SessionActivityKind
   /** Active items of the family; absent for a family without per-item identity (`turn`). */
   readonly items?: readonly SessionActivityItem[]
+}
+
+/**
+ * One workspace-local logical Session folder. Folder membership never changes
+ * Workspace ownership or a Session's working directory.
+ */
+export interface WorkspaceFolder {
+  /** Stable folder id, generated at creation. */
+  readonly id: FolderId
+  /** Display title. */
+  readonly title: string
+  /** ISO-8601 creation instant. */
+  readonly createdAt: string
+  /** ISO-8601 instant of the most recent Folder mutation. */
+  readonly updatedAt: string
+  /** Owned Sessions filed in this Folder's display order. */
+  readonly sessionIds: readonly SessionId[]
+}
+
+/**
+ * One workspace group: a display folder filing zero or more workspaces.
+ * Membership is the group's own ordered account and never touches the filed
+ * workspaces' session accounting; a group absent from {@link workspaceIds}
+ * cannot be deleted without first filing its members elsewhere.
+ */
+export interface WorkspaceGroup {
+  /** Stable record id (generated uuid). */
+  readonly id: GroupId
+
+  /** Display title; unique across groups. */
+  readonly title: string
+
+  /** ISO-8601 creation instant, stamped at create and never rewritten. */
+  readonly createdAt: string
+
+  /** ISO-8601 instant of the last durable mutation (create counts as one). */
+  readonly updatedAt: string
+
+  /** Filed workspaces in display order. */
+  readonly workspaceIds: readonly WorkspaceId[]
+
+  /**
+   * Replace the display title durably.
+   * @param title - New title; duplicates across groups are allowed at this layer (uniqueness is a Remote-command policy).
+   * @returns resolution after durability.
+   */
+  setTitle(title: string): Promise<void>
 }
 
 /**
@@ -98,6 +165,9 @@ export interface Workspace {
    * candidates. This does not admit new sessions or recreate directories.
    */
   readonly sessionIds: readonly SessionId[]
+
+  /** Ordered logical Session folders. Sessions not listed remain at the Workspace root. */
+  readonly folders: readonly WorkspaceFolder[]
 
   /**
    * Replace the display title durably.
@@ -142,6 +212,36 @@ export interface Workspace {
    * @returns resolution after durability.
    */
   detachSession(sessionId: SessionId): Promise<void>
+
+  /**
+   * Create a logical Session folder in this Workspace.
+   * @param title - Folder display title.
+   * @returns the newly stored Folder.
+   */
+  createFolder(title: string): Promise<WorkspaceFolder>
+
+  /**
+   * Rename a logical Session folder.
+   * @param folderId - Folder to rename.
+   * @param title - New display title.
+   * @returns resolution after durability.
+   */
+  setFolderTitle(folderId: FolderId, title: string): Promise<void>
+
+  /**
+   * Remove a logical Session folder and return its Sessions to the Workspace root.
+   * @param folderId - Folder to remove.
+   * @returns resolution after durability.
+   */
+  deleteFolder(folderId: FolderId): Promise<void>
+
+  /**
+   * File an owned Session in a Folder, or return it to the Workspace root.
+   * @param sessionId - Session already owned by this Workspace.
+   * @param folderId - Target Folder; omitted returns the Session to root.
+   * @returns resolution after durability.
+   */
+  moveSessionToFolder(sessionId: SessionId, folderId?: FolderId): Promise<void>
 
   /**
    * Live directory check, uncached: whether {@link path} currently exists and

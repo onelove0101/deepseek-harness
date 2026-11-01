@@ -460,6 +460,226 @@ export function deriveGroups(
   return groups
 }
 
+/** Stable browser-local expansion key for one durable Workspace Group. */
+export function workspaceGroupExpansionKey(groupId: string): string {
+  return `workspace-group:${groupId}`
+}
+
+/** Stable browser-local expansion key for one Workspace. */
+export function workspaceExpansionKey(workspaceId: WorkspaceId): string {
+  return `workspace:${workspaceId}`
+}
+
+/** Stable browser-local expansion key for one Workspace-local Folder. */
+export function folderExpansionKey(workspaceId: WorkspaceId, folderId: string): string {
+  return `workspace-folder:${workspaceId}:${folderId}`
+}
+
+/** Stable browser-local expansion key for the synthetic ungrouped Session branch. */
+export function ungroupedExpansionKey(): string {
+  return 'workspace-ungrouped'
+}
+
+/** A durable Workspace Group branch in the browser hierarchy. */
+export interface WorkspaceGroupTreeNode {
+  readonly kind: 'group'
+  readonly key: string
+  readonly groupId: string
+  readonly title: string
+  readonly expanded: boolean
+  readonly containsCurrent: boolean
+  readonly workspaces: readonly WorkspaceTreeNode[]
+}
+
+/** A Workspace-local root branch for Sessions that are not filed in a Folder. */
+export interface WorkspaceRootTreeNode {
+  readonly kind: 'root'
+  readonly key: string
+  readonly expanded: boolean
+  readonly containsCurrent: boolean
+  readonly sessionCount: number
+  readonly sessions: readonly SessionNode[]
+}
+
+/** A durable logical Session Folder branch. */
+export interface WorkspaceFolderTreeNode {
+  readonly kind: 'folder'
+  readonly key: string
+  readonly folderId: string
+  readonly title: string
+  readonly expanded: boolean
+  readonly containsCurrent: boolean
+  readonly sessionCount: number
+  readonly sessions: readonly SessionNode[]
+}
+
+/** A filesystem-backed Workspace branch in the browser hierarchy. */
+export interface WorkspaceTreeNode {
+  readonly kind: 'workspace'
+  readonly key: string
+  readonly workspace: WorkspaceView
+  readonly expanded: boolean
+  readonly containsCurrent: boolean
+  readonly sessionCount: number
+  readonly root: WorkspaceRootTreeNode
+  readonly folders: readonly WorkspaceFolderTreeNode[]
+}
+
+/** Synthetic branch for Sessions outside every Workspace. */
+export interface UngroupedTreeNode {
+  readonly kind: 'ungrouped'
+  readonly key: string
+  readonly expanded: boolean
+  readonly containsCurrent: boolean
+  readonly sessionCount: number
+  readonly sessions: readonly SessionNode[]
+}
+
+/** One branch shown in Workspace grouping mode. */
+export type WorkspaceHierarchyNode = WorkspaceGroupTreeNode | WorkspaceTreeNode | UngroupedTreeNode
+
+/** Structural layout consumed by the hierarchical browser derivation. */
+export interface WorkspaceHierarchyLayout {
+  readonly topLevelWorkspaceIds: readonly WorkspaceId[]
+  readonly groups: readonly {
+    readonly groupId: string
+    readonly title: string
+    readonly workspaceIds: readonly WorkspaceId[]
+  }[]
+}
+
+function visibleMembers(
+  ids: readonly SessionId[],
+  list: SessionListState,
+  archived: ReadonlySet<SessionId>,
+): SessionSummary[] {
+  return ids.flatMap((id) => {
+    const summary = list.byId[id]
+    return summary === undefined || !sessionVisible(summary, list.current, archived) ? [] : [summary]
+  })
+}
+
+function workspaceTreeNode(
+  workspace: WorkspaceView,
+  list: SessionListState,
+  archived: ReadonlySet<SessionId>,
+  expanded: ReadonlySet<string>,
+  descendants: ReadonlyMap<SessionId, SubagentDescendantSummary>,
+  pendingInteractions: SessionPendingInteractions,
+): WorkspaceTreeNode {
+  const foldered = new Set<SessionId>()
+  const folders = workspace.folders.map((folder) => {
+    const validIds = folder.sessionIds.filter(id => workspace.sessionIds.includes(id) && !foldered.has(id))
+    for (const id of validIds) {
+      foldered.add(id)
+    }
+    const members = visibleMembers(validIds, list, archived)
+    const key = folderExpansionKey(workspace.workspaceId, folder.folderId)
+    const isExpanded = expanded.has(key)
+    return {
+      kind: 'folder' as const,
+      key,
+      folderId: folder.folderId,
+      title: folder.title,
+      expanded: isExpanded,
+      containsCurrent: list.current !== undefined && members.some(member => member.id === list.current),
+      sessionCount: members.length,
+      sessions: isExpanded ? members.map(member => sessionNode(member, descendants, pendingInteractions)) : [],
+    }
+  })
+  const rootMembers = visibleMembers(workspace.sessionIds.filter(id => !foldered.has(id)), list, archived)
+  const rootKey = workspaceExpansionKey(workspace.workspaceId)
+  const rootExpanded = expanded.has(rootKey)
+  const currentInWorkspace = list.current !== undefined && workspace.sessionIds.includes(list.current)
+  return {
+    kind: 'workspace',
+    key: rootKey,
+    workspace,
+    expanded: rootExpanded,
+    containsCurrent: currentInWorkspace,
+    sessionCount: rootMembers.length + folders.reduce((count, folder) => count + folder.sessionCount, 0),
+    root: {
+      kind: 'root',
+      key: rootKey,
+      expanded: rootExpanded,
+      containsCurrent: rootMembers.some(member => member.id === list.current),
+      sessionCount: rootMembers.length,
+      sessions: rootExpanded ? rootMembers.map(member => sessionNode(member, descendants, pendingInteractions)) : [],
+    },
+    folders,
+  }
+}
+
+/**
+ * Derive durable Workspace Groups, Workspaces, Workspace roots, Folder rows,
+ * and the synthetic ungrouped branch from one complete controller layout.
+ * @param layout - authoritative Workspace placement and Group order.
+ * @returns hierarchy rows in their durable display order.
+ */
+export function deriveWorkspaceHierarchy(
+  list: SessionListState,
+  workspaces: readonly WorkspaceView[],
+  layout: WorkspaceHierarchyLayout,
+  archivedSessionIds: readonly SessionId[],
+  pendingInteractions: SessionPendingInteractions,
+  view: TreeView,
+): WorkspaceHierarchyNode[] {
+  const archived = new Set(archivedSessionIds)
+  const expanded = new Set(view.expandedGroups)
+  const descendants = indexSubagentDescendants(list.byId)
+  const byId = new Map(workspaces.map(workspace => [workspace.workspaceId, workspace]))
+  const placed = new Set<WorkspaceId>()
+  const hierarchy: WorkspaceHierarchyNode[] = []
+  for (const group of layout.groups) {
+    const branches: WorkspaceTreeNode[] = []
+    for (const workspaceId of group.workspaceIds) {
+      const workspace = byId.get(workspaceId)
+      if (workspace === undefined || placed.has(workspaceId)) {
+        continue
+      }
+      placed.add(workspaceId)
+      branches.push(workspaceTreeNode(workspace, list, archived, expanded, descendants, pendingInteractions))
+    }
+    const key = workspaceGroupExpansionKey(group.groupId)
+    hierarchy.push({
+      kind: 'group',
+      key,
+      groupId: group.groupId,
+      title: group.title,
+      expanded: expanded.has(key),
+      containsCurrent: branches.some(branch => branch.containsCurrent),
+      workspaces: expanded.has(key) ? branches : [],
+    })
+  }
+  for (const workspaceId of layout.topLevelWorkspaceIds) {
+    const workspace = byId.get(workspaceId)
+    if (workspace === undefined || placed.has(workspaceId)) {
+      continue
+    }
+    placed.add(workspaceId)
+    hierarchy.push(workspaceTreeNode(workspace, list, archived, expanded, descendants, pendingInteractions))
+  }
+  const accounted = new Set<SessionId>(workspaces.flatMap(workspace => workspace.sessionIds))
+  const loose = list.ids
+    .map(id => list.byId[id])
+    .filter((summary): summary is SessionSummary =>
+      summary !== undefined && !accounted.has(summary.id) && sessionVisible(summary, list.current, archived))
+  if (loose.length > 0) {
+    const key = ungroupedExpansionKey()
+    const isExpanded = expanded.has(key)
+    const members = orderedUngrouped(loose, view.ungroupedOrder, list.byId)
+    hierarchy.push({
+      kind: 'ungrouped',
+      key,
+      expanded: isExpanded,
+      containsCurrent: list.current !== undefined && members.some(member => member.id === list.current),
+      sessionCount: members.length,
+      sessions: isExpanded ? members.map(member => sessionNode(member, descendants, pendingInteractions)) : [],
+    })
+  }
+  return hierarchy
+}
+
 /**
  * Select complete flat-list membership, independently of archive visibility.
  * @param list - sessions list snapshot.

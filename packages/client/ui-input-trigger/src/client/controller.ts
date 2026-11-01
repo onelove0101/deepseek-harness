@@ -15,7 +15,7 @@ import type {
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { detectTrigger } from '../core/detect.ts'
 import { MENU_CLOSED, menuReduce, seedGroups } from '../core/menu.ts'
-import type { MenuEvent, MenuState, TriggerHit } from '../core/contract.ts'
+import type { FlyoutState, MenuEvent, MenuState, TriggerHit } from '../core/contract.ts'
 import type {
   ClientSessionContext, InputTriggerCandidate, InputTriggerCrumb, InputTriggerSource, PickAction,
   SubmitEnvelope, TriggerChar, TriggerGuard,
@@ -67,6 +67,12 @@ export class InputTriggerController {
    */
   readonly launcher: SnapshotStore<string | null> = createSnapshotStore<string | null>(null)
   /**
+   * The open flyout of a `submenu` row, or null. A snapshot store like
+   * {@link InputTriggerController.menu}: it is cleared whenever the menu closes
+   * or its highlight leaves the parent row.
+   */
+  readonly flyout: SnapshotStore<FlyoutState | null> = createSnapshotStore<FlyoutState | null>(null)
+  /**
    * Crumbs published by each header-bearing source for the open menu, keyed
    * by source name. A snapshot store like {@link InputTriggerController.launcher}:
    * the answer changes with every hit, and render-side consumers subscribe
@@ -99,6 +105,9 @@ export class InputTriggerController {
   /** Whether the open menu was reached by a drill pick; cleared with the menu. */
   private drilled = false
   private fetch: AbortController | null = null
+  private flyoutFetch: AbortController | null = null
+  /** Whether the open flyout was entered by Enter / Tab or a pick, so its first row takes the highlight once loaded. */
+  private flyoutKeyboard = false
   private disposed = false
   /** Per-source lexicon unsubscribers (sources without the hook never enter). */
   private readonly lexiconOffs = new Map<InputTriggerSource, () => void>()
@@ -201,12 +210,13 @@ export class InputTriggerController {
     this.menu.set(seedGroups(this.menu.getSnapshot(), [match]))
     this.reduce({ type: 'hit', hit })
     this.refreshHeaders(hit, [match])
-    this.fetchCandidates(hit, [match])
+    this.fetchCandidates(hit, [match], 'launcher')
   }
 
   /**
    * Pointer pick from MenuView: route the clicked candidate through onPick
-   * and execute claim/insert outcomes via the scoped input events.
+   * and execute claim/insert outcomes via the scoped input events. A
+   * `submenu` row opens its flyout instead, with the first row highlighted.
    * @param source - source (group) name.
    * @param index - candidate index within the group.
    * @param action - settling pick (default) or the candidate's drill action.
@@ -218,9 +228,43 @@ export class InputTriggerController {
     const group = state.groups.find(g => g.source === source)
     const candidate = group !== undefined && group.status === 'ready' ? group.items[index] : undefined
     if (candidate === undefined) return
+    if (candidate.submenu === true && action === 'pick') {
+      this.openFlyout(source, index, true)
+      return
+    }
     const src = this.deps.roster.sources(hit.trigger).find(s => s.name === source)
     if (src === undefined) return
     this.settle(src, candidate, hit, action)
+  }
+
+  /**
+   * Pick one row of the open flyout: route it through its source's onPick with
+   * the parent row attached, then close the menu like any settling pick.
+   * @param index - row index within the flyout.
+   */
+  pickFlyout(index: number): void {
+    const state = this.menu.getSnapshot()
+    const flyout = this.flyout.getSnapshot()
+    const hit = this.hit
+    if (this.disposed || !state.open || hit === null || flyout === null || flyout.status !== 'ready') return
+    const candidate = flyout.items[index]
+    const parent = state.groups.find(g => g.source === flyout.source)?.items[flyout.parent]
+    const src = this.deps.roster.sources(hit.trigger).find(s => s.name === flyout.source)
+    if (candidate === undefined || parent === undefined || src === undefined) return
+    this.settle(src, candidate, hit, 'pick', parent)
+  }
+
+  /**
+   * Pointer hover on one flyout row: park the flyout highlight there.
+   * @param index - row index within the flyout.
+   */
+  hoverFlyout(index: number): void {
+    const flyout = this.flyout.getSnapshot()
+    if (this.disposed || flyout === null || flyout.status !== 'ready' || flyout.items[index] === undefined
+      || flyout.highlight === index) {
+      return
+    }
+    this.flyout.set({ ...flyout, highlight: index })
   }
 
   /**
@@ -250,6 +294,9 @@ export class InputTriggerController {
   hover(source: string, index: number): void {
     if (this.disposed) return
     this.reduce({ type: 'hover', source, index })
+    const open = this.flyout.getSnapshot()
+    if (open !== null && open.source === source && open.parent === index && open.status !== 'failed') return
+    this.openFlyout(source, index, false)
   }
 
   /**
@@ -266,6 +313,8 @@ export class InputTriggerController {
     if (composing || this.disposed) return 'pass'
     const state = this.menu.getSnapshot()
     if (!state.open) return 'pass'
+    const flyoutKey = this.arbitrateFlyout(key)
+    if (flyoutKey !== undefined) return flyoutKey
     switch (key) {
       case 'up': {
         this.reduce({ type: 'move', dir: -1 })
@@ -291,6 +340,10 @@ export class InputTriggerController {
         // falls through to submit — an explicit no-op until the group is ready.
         const group = state.groups.find(g => g.source === state.highlight?.source)
         if (group === undefined || group.status !== 'ready') return 'consumed'
+        if (group.items[state.highlight.index]?.submenu === true) {
+          this.openFlyout(state.highlight.source, state.highlight.index, true)
+          return 'consumed'
+        }
         this.pick(state.highlight.source, state.highlight.index)
         return 'pick-highlighted'
       }
@@ -302,6 +355,10 @@ export class InputTriggerController {
         if (group === undefined || group.status !== 'ready') return 'consumed'
         const item = group.items[state.highlight.index]
         if (item === undefined) return 'pass'
+        if (item.submenu === true) {
+          this.openFlyout(state.highlight.source, state.highlight.index, true)
+          return 'consumed'
+        }
         if (item.drill === true) {
           this.pick(state.highlight.source, state.highlight.index, 'drill')
           return 'consumed'
@@ -458,10 +515,9 @@ export class InputTriggerController {
   refreshOpenMenu(): void {
     if (this.disposed || !this.menu.getSnapshot().open || this.hit === null) return
     const launched = this.launcher.getSnapshot()
-    const roster = this.deps.roster.sources(this.hit.trigger)
-      .filter(source => launched === null || source.name === launched)
+    const roster = this.rosterFor(this.hit, launched)
     if (roster.length === 0) return
-    this.fetchCandidates(this.hit, roster)
+    this.fetchCandidates(this.hit, roster, launched === null ? undefined : 'launcher')
   }
 
   /** Scope teardown: close and abort (the service deletes the map entry). */
@@ -530,13 +586,26 @@ export class InputTriggerController {
       // open menu, so one source cannot contribute its previous catalog.
       void Promise.resolve().then(() => {
         if (this.disposed || this.hit !== hit || !this.menu.getSnapshot().open) return
-        this.fetchCandidates(hit, this.deps.roster.sources(hit.trigger))
+        const launched = this.launcher.getSnapshot()
+        const roster = this.rosterFor(hit, launched)
+        if (roster.length === 0) return
+        this.fetchCandidates(hit, roster, launched === null ? undefined : 'launcher')
       })
     }))
   }
 
+  /** Select the full trigger roster or the one source opened by Composer chrome. */
+  private rosterFor(hit: TriggerHit, launched: string | null): readonly InputTriggerSource[] {
+    const roster = this.deps.roster.sources(hit.trigger)
+    return launched === null ? roster : roster.filter(source => source.name === launched)
+  }
+
   /** Launch the candidate fetch for one hit generation, superseding the previous one. */
-  private fetchCandidates(hit: TriggerHit, roster: readonly InputTriggerSource[]): void {
+  private fetchCandidates(
+    hit: TriggerHit,
+    roster: readonly InputTriggerSource[],
+    origin?: 'launcher',
+  ): void {
     this.stopFetch()
     const controller = new AbortController()
     this.fetch = controller
@@ -549,6 +618,7 @@ export class InputTriggerController {
           quoted: hit.quoted,
           position: hit.position,
           drilled: this.drilled,
+          ...(origin === undefined ? {} : { origin }),
           signal: controller.signal,
         })
         .then(
@@ -571,6 +641,87 @@ export class InputTriggerController {
   }
 
   /**
+   * Keys of an open flyout whose highlight is inside it: up/down move within
+   * it, Enter/Tab pick its row, Escape closes only the flyout. While the
+   * highlight is still on the parent row the menu handles the key itself.
+   * @returns the outcome, or undefined when the menu's own handling applies.
+   */
+  private arbitrateFlyout(key: ArbitrateKey): ArbitrateOutcome | undefined {
+    const flyout = this.flyout.getSnapshot()
+    if (flyout === null) return undefined
+    if (key === 'escape') {
+      this.closeFlyout()
+      return 'consumed'
+    }
+    if (flyout.highlight === null) return undefined
+    if (key === 'enter' || key === 'tab') {
+      this.pickFlyout(flyout.highlight)
+      return 'pick-highlighted'
+    }
+    const size = flyout.items.length
+    this.flyout.set({ ...flyout, highlight: (flyout.highlight + (key === 'down' ? 1 : -1) + size) % size })
+    return 'consumed'
+  }
+
+  /**
+   * Open the flyout of a `submenu` row, or close the open one when the row has
+   * none. Reads the source's rows afresh on every open.
+   * @param source - source (group) name.
+   * @param index - parent row index within the group.
+   * @param keyboard - whether Enter / Tab or a pointer pick opened it, which highlights its first row; hover leaves it unhighlighted.
+   */
+  private openFlyout(source: string, index: number, keyboard: boolean): void {
+    const group = this.menu.getSnapshot().groups.find(g => g.source === source)
+    const parent = group?.status === 'ready' ? group.items[index] : undefined
+    const open = this.flyout.getSnapshot()
+    if (open !== null && open.source === source && open.parent === index && open.parentName === parent?.name
+      && open.status !== 'failed') {
+      if (keyboard) {
+        this.flyoutKeyboard = true
+        if (open.status === 'ready' && open.items.length > 0 && open.highlight === null) {
+          this.flyout.set({ ...open, highlight: 0 })
+        }
+      }
+      return
+    }
+    this.closeFlyout()
+    const hit = this.hit
+    const src = hit === null ? undefined : this.deps.roster.sources(hit.trigger).find(s => s.name === source)
+    if (parent?.submenu !== true || src?.submenu === undefined) return
+    const controller = new AbortController()
+    this.flyoutFetch = controller
+    this.flyoutKeyboard = keyboard
+    this.flyout.set({ source, parent: index, parentName: parent.name, status: 'pending', items: [], highlight: null })
+    void src.submenu(this.project(), parent, controller.signal).then(
+      (items) => {
+        const current = this.flyout.getSnapshot()
+        if (controller.signal.aborted || this.flyoutFetch !== controller || current === null
+          || current.source !== source || current.parent !== index || current.parentName !== parent.name) return
+        this.flyout.set({
+          ...current,
+          status: 'ready',
+          items,
+          highlight: this.flyoutKeyboard && items.length > 0 ? 0 : null,
+        })
+      },
+      (error: unknown) => {
+        const current = this.flyout.getSnapshot()
+        if (controller.signal.aborted || this.flyoutFetch !== controller || current === null
+          || current.source !== source || current.parent !== index || current.parentName !== parent.name) return
+        console.error(`[ui-input-trigger] source "${source}" submenu failed:`, error)
+        this.flyout.set({ ...current, status: 'failed', items: [], highlight: null })
+      },
+    )
+  }
+
+  private closeFlyout(): void {
+    this.flyoutFetch?.abort()
+    this.flyoutFetch = null
+    this.flyoutKeyboard = false
+    if (this.flyout.getSnapshot() !== null) this.flyout.set(null)
+  }
+
+  /**
    * Run one candidate (or crumb) through its source and apply the outcome.
    *
    * A drill is the one pick that leaves the menu open, so it is also the one
@@ -580,12 +731,14 @@ export class InputTriggerController {
    * @param candidate - the picked candidate, or a crumb projected as one.
    * @param hit - the authoritative hit supplying position and span CAS.
    * @param action - settling pick or drill.
+   * @param parent - the submenu row a flyout candidate was listed under.
    */
   private settle(
     src: InputTriggerSource,
     candidate: InputTriggerCandidate,
     hit: TriggerHit,
     action: PickAction,
+    parent?: InputTriggerCandidate,
   ): void {
     const outcome = src.onPick({
       candidate,
@@ -594,6 +747,7 @@ export class InputTriggerController {
       via: 'menu',
       action,
       span: hit.span,
+      ...parent === undefined ? {} : { parent },
     })
     this.stopFetch()
     // A settling pick is the user's decision about this token: the menu stays
@@ -649,6 +803,16 @@ export class InputTriggerController {
     }
   }
 
+  /** Close the flyout unless the menu is open with its highlight still on the same parent row. */
+  private syncFlyout(menu: MenuState): void {
+    const flyout = this.flyout.getSnapshot()
+    if (flyout === null) return
+    const group = menu.groups.find(g => g.source === flyout.source)
+    const stays = menu.open && menu.highlight?.source === flyout.source && menu.highlight.index === flyout.parent
+      && group?.items[flyout.parent]?.name === flyout.parentName
+    if (!stays) this.closeFlyout()
+  }
+
   private clearLauncher(): void {
     if (this.launcher.getSnapshot() !== null) this.launcher.set(null)
   }
@@ -657,6 +821,7 @@ export class InputTriggerController {
     const cur = this.menu.getSnapshot()
     const next = menuReduce(cur, ev)
     if (next !== cur) this.menu.set(next)
+    this.syncFlyout(next)
     if (next.open) return
     this.clearLauncher()
     this.drilled = false

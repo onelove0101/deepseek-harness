@@ -9,9 +9,21 @@ import type {
   WorkspaceCreateValue,
   WorkspaceDeleteRequest,
   WorkspaceDeleteValue,
+  WorkspaceFolderCreateRequest,
+  WorkspaceFolderDeleteRequest,
+  WorkspaceFolderRenameRequest,
+  WorkspaceFolderValue,
   WorkspaceFollowFrame,
+  WorkspaceGroupCreateRequest,
+  WorkspaceGroupDeleteRequest,
+  WorkspaceGroupRenameRequest,
+  WorkspaceGroupValue,
   WorkspaceInsertBeforeRequest,
   WorkspaceInsertSessionBeforeRequest,
+  WorkspaceLayout,
+  WorkspaceLayoutValue,
+  WorkspaceMoveSessionToFolderRequest,
+  WorkspaceMoveToGroupRequest,
   WorkspaceOrderValue,
   WorkspacePinSessionRequest,
   WorkspacePinValue,
@@ -39,6 +51,7 @@ function workspace(
     path: `/w/${id}`,
     title: id,
     sessionIds,
+    folders: [],
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt,
   }
@@ -102,6 +115,62 @@ class FakeWorkspaceRemote implements WorkspaceRemote {
     _request: WorkspaceUnpinSessionRequest,
   ) => Promise<RemoteResult<WorkspacePinValue>> = () =>
     Promise.resolve(remoteOk({ pinnedSessionIds: [] }))
+  onCreateGroup: (
+    request: WorkspaceGroupCreateRequest,
+  ) => Promise<RemoteResult<WorkspaceGroupValue>> = request => Promise.resolve(remoteOk({
+    group: {
+      groupId: 'group' as WorkspaceGroupValue['group']['groupId'],
+      title: request.title,
+      workspaceIds: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    },
+    layout: { topLevelWorkspaceIds: [], groups: [] },
+  }))
+  onRenameGroup: (
+    request: WorkspaceGroupRenameRequest,
+  ) => Promise<RemoteResult<WorkspaceGroupValue>> = request => Promise.resolve(remoteOk({
+    group: {
+      groupId: request.groupId,
+      title: request.title,
+      workspaceIds: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    },
+    layout: { topLevelWorkspaceIds: [], groups: [] },
+  }))
+  onDeleteGroup: (
+    _request: WorkspaceGroupDeleteRequest,
+  ) => Promise<RemoteResult<WorkspaceLayoutValue>> = () =>
+    Promise.resolve(remoteOk({ layout: { topLevelWorkspaceIds: [], groups: [] } }))
+  onMoveToGroup: (
+    _request: WorkspaceMoveToGroupRequest,
+  ) => Promise<RemoteResult<WorkspaceLayoutValue>> = () =>
+    Promise.resolve(remoteOk({ layout: { topLevelWorkspaceIds: [], groups: [] } }))
+  onCreateFolder: (
+    request: WorkspaceFolderCreateRequest,
+  ) => Promise<RemoteResult<WorkspaceFolderValue>> = request => Promise.resolve(remoteOk({
+    folder: {
+      folderId: 'folder' as WorkspaceFolderValue['folder']['folderId'],
+      title: request.title,
+      sessionIds: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    },
+    workspace: workspace(String(request.workspaceId)),
+  }))
+  onRenameFolder: (
+    request: WorkspaceFolderRenameRequest,
+  ) => Promise<RemoteResult<WorkspaceValue>> = request =>
+    Promise.resolve(remoteOk({ workspace: workspace(String(request.workspaceId)) }))
+  onDeleteFolder: (
+    request: WorkspaceFolderDeleteRequest,
+  ) => Promise<RemoteResult<WorkspaceValue>> = request =>
+    Promise.resolve(remoteOk({ workspace: workspace(String(request.workspaceId)) }))
+  onMoveSessionToFolder: (
+    request: WorkspaceMoveSessionToFolderRequest,
+  ) => Promise<RemoteResult<WorkspaceValue>> = request =>
+    Promise.resolve(remoteOk({ workspace: workspace(String(request.workspaceId), [request.sessionId]) }))
 
   create(request: WorkspaceCreateRequest): Promise<RemoteResult<WorkspaceCreateValue>> {
     this.record('create', request)
@@ -151,6 +220,46 @@ class FakeWorkspaceRemote implements WorkspaceRemote {
   follow(_signal?: AbortSignal): RemoteStreamHandle<WorkspaceFollowFrame, never> {
     return streamHandle<WorkspaceFollowFrame>((async function* () {})())
   }
+  createGroup(request: WorkspaceGroupCreateRequest): Promise<RemoteResult<WorkspaceGroupValue>> {
+    this.record('createGroup', request)
+    return this.onCreateGroup(request)
+  }
+
+  renameGroup(request: WorkspaceGroupRenameRequest): Promise<RemoteResult<WorkspaceGroupValue>> {
+    this.record('renameGroup', request)
+    return this.onRenameGroup(request)
+  }
+
+  deleteGroup(request: WorkspaceGroupDeleteRequest): Promise<RemoteResult<WorkspaceLayoutValue>> {
+    this.record('deleteGroup', request)
+    return this.onDeleteGroup(request)
+  }
+
+  moveToGroup(request: WorkspaceMoveToGroupRequest): Promise<RemoteResult<WorkspaceLayoutValue>> {
+    this.record('moveToGroup', request)
+    return this.onMoveToGroup(request)
+  }
+
+  createFolder(request: WorkspaceFolderCreateRequest): Promise<RemoteResult<WorkspaceFolderValue>> {
+    this.record('createFolder', request)
+    return this.onCreateFolder(request)
+  }
+
+  renameFolder(request: WorkspaceFolderRenameRequest): Promise<RemoteResult<WorkspaceValue>> {
+    this.record('renameFolder', request)
+    return this.onRenameFolder(request)
+  }
+
+  deleteFolder(request: WorkspaceFolderDeleteRequest): Promise<RemoteResult<WorkspaceValue>> {
+    this.record('deleteFolder', request)
+    return this.onDeleteFolder(request)
+  }
+
+  moveSessionToFolder(request: WorkspaceMoveSessionToFolderRequest): Promise<RemoteResult<WorkspaceValue>> {
+    this.record('moveSessionToFolder', request)
+    return this.onMoveSessionToFolder(request)
+  }
+
 
   private record(method: string, request: unknown): void {
     this.calls.push({ method, request })
@@ -167,7 +276,11 @@ function baseline(
   archivedSessionIds: readonly SessionId[] = [],
   pinnedSessionIds: readonly SessionId[] = [],
 ): void {
-  model.replaceBaseline({ items, archivedSessionIds, pinnedSessionIds })
+  model.replaceBaseline({
+    items, archivedSessionIds, pinnedSessionIds,
+    topLevelWorkspaceIds: items.map(item => item.workspaceId),
+    groups: [],
+  })
 }
 
 describe('ClientWorkspaceModel', () => {
@@ -196,7 +309,7 @@ describe('ClientWorkspaceModel', () => {
     expect(model.getSnapshot()).toMatchObject({ phase: 'pending', state: 'loading' })
     baseline(model, [workspace('old'), workspace('kept')])
     model.upsertView(workspace('new'))
-    model.replaceOrder([wid('kept'), wid('new'), wid('old')])
+    model.replaceLayout(layout([wid('kept'), wid('new'), wid('old')]))
     model.replaceArchived([sid('hidden')])
     model.removeView(wid('old'))
     expect(model.getSnapshot()).toMatchObject({ phase: 'ready', state: 'idle', archivedSessionIds: ['hidden'] })
@@ -244,7 +357,7 @@ describe('ClientWorkspaceModel', () => {
     remote.onInsertBefore = () => gate.promise
     const pending = model.insertBefore(wid('three'), wid('one'))
     expect(model.getSnapshot().items.map(item => item.workspaceId)).toEqual(['three', 'one', 'two'])
-    model.replaceOrder([wid('one'), wid('three'), wid('two')])
+    model.replaceLayout(layout([wid('one'), wid('three'), wid('two')]))
     gate.resolve(remoteOk({ workspaceIds: [wid('three'), wid('one'), wid('two')] }))
     await pending
     expect(model.getSnapshot().items.map(item => item.workspaceId)).toEqual(['one', 'three', 'two'])
@@ -319,6 +432,49 @@ describe('ClientWorkspaceModel', () => {
     gate.resolve(remoteOk({ workspace: { ...workspace('gone'), title: 'late' } }))
     await expect(rename).resolves.toMatchObject({ ok: true })
     expect(model.getSnapshot().items).toEqual([])
+  })
+
+  it('keeps a same-timestamp stream row when an older unary echo arrives later', async () => {
+    const remote = new FakeWorkspaceRemote()
+    const model = modelFor(remote)
+    baseline(model, [workspace('one')])
+    const gate = deferred<RemoteResult<WorkspaceValue>>()
+    remote.onRename = () => gate.promise
+
+    const rename = model.rename(wid('one'), 'unary')
+    model.upsertView({ ...workspace('one'), title: 'streamed' })
+    gate.resolve(remoteOk({ workspace: { ...workspace('one'), title: 'unary' } }))
+
+    await expect(rename).resolves.toMatchObject({ ok: true })
+    expect(model.getSnapshot().items[0]?.title).toBe('streamed')
+  })
+
+  it('accepts a same-timestamp unary row echo after a baseline', async () => {
+    const remote = new FakeWorkspaceRemote()
+    const model = modelFor(remote)
+    baseline(model, [workspace('one')])
+    remote.onRename = () => Promise.resolve(remoteOk({
+      workspace: { ...workspace('one'), title: 'renamed' },
+    }))
+
+    await expect(model.rename(wid('one'), 'renamed')).resolves.toMatchObject({ ok: true })
+    expect(model.getSnapshot().items[0]?.title).toBe('renamed')
+  })
+
+  it('does not let another Workspace stream row suppress a unary echo', async () => {
+    const remote = new FakeWorkspaceRemote()
+    const model = modelFor(remote)
+    baseline(model, [workspace('one'), workspace('two')])
+    const gate = deferred<RemoteResult<WorkspaceValue>>()
+    remote.onRename = () => gate.promise
+
+    const rename = model.rename(wid('one'), 'renamed')
+    model.upsertView({ ...workspace('two'), title: 'streamed' })
+    gate.resolve(remoteOk({ workspace: { ...workspace('one'), title: 'renamed' } }))
+
+    await expect(rename).resolves.toMatchObject({ ok: true })
+    expect(model.getSnapshot().items.find(item => item.workspaceId === wid('one'))?.title).toBe('renamed')
+    expect(model.getSnapshot().items.find(item => item.workspaceId === wid('two'))?.title).toBe('streamed')
   })
 
   it('applies Workspace mutation echoes and leaves failed results unchanged', async () => {
@@ -527,11 +683,11 @@ describe('ClientWorkspaceModel', () => {
     model.upsertView(workspace('one', [sid('new')], '2026-03-01T00:00:00.000Z'))
     expect(model.getSnapshot().items[0]?.sessionIds).toEqual(['new'])
 
-    model.replaceOrder([wid('one')])
+    model.replaceLayout(layout([wid('one')]))
     expect(model.getSnapshot().items.map(item => item.workspaceId)).toEqual(['one', 'two'])
-    model.replaceOrder([wid('two')])
+    model.replaceLayout(layout([wid('two')]))
     expect(model.getSnapshot().items.map(item => item.workspaceId)).toEqual(['two', 'one'])
-    model.replaceOrder([wid('one')])
+    model.replaceLayout(layout([wid('one')]))
     expect(model.getSnapshot().items.map(item => item.workspaceId)).toEqual(['one', 'two'])
 
     await expect(model.insertBefore(wid('one'), wid('one'))).resolves.toMatchObject({ ok: true })

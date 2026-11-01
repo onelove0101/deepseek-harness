@@ -179,6 +179,7 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/client/ui-sidebar-browser': { kind: 'none', reason: 'Browser-only navigation surface; visited content never enters a model request.' },
   'packages/client/ui-sidebar-files': { kind: 'none', reason: 'Browser-only workspace file tree; registers no tool, prompt section, or session event.' },
   'packages/client/resources': { kind: 'none', reason: 'Browser-side resource model (providers, pinning, useResource); registers nothing model-facing.' },
+  'packages/client/ui-expert': { kind: 'none', reason: 'Browser-side settings page and menu source; the Host-side Expert injection is documented by dsh-expert.' },
   'packages/client/ui-settings': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },
   'packages/client/ui-settings-general': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },
   'packages/client/chat-process-fold': { kind: 'none', reason: 'Browser-side fold of logged process steps; registers nothing model-facing.' },

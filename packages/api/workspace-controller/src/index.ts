@@ -17,10 +17,21 @@ import type {
   WorkspaceCreateValue,
   WorkspaceDeleteRequest,
   WorkspaceDeleteValue,
+  WorkspaceFolderCreateRequest,
+  WorkspaceFolderDeleteRequest,
+  WorkspaceFolderRenameRequest,
+  WorkspaceFolderValue,
   WorkspaceFollowFrame,
+  WorkspaceGroupCreateRequest,
+  WorkspaceGroupDeleteRequest,
+  WorkspaceGroupRenameRequest,
+  WorkspaceGroupValue,
   WorkspaceId,
   WorkspaceInsertBeforeRequest,
   WorkspaceInsertSessionBeforeRequest,
+  WorkspaceLayoutValue,
+  WorkspaceMoveSessionToFolderRequest,
+  WorkspaceMoveToGroupRequest,
   WorkspaceOrderValue,
   WorkspacePinSessionRequest,
   WorkspacePinValue,
@@ -149,6 +160,86 @@ export class WorkspaceController extends TypertRemoteService {
   @Remote('insertSessionBefore')
   insertSessionBefore(request: WorkspaceInsertSessionBeforeRequest): Promise<WorkspaceValue> {
     return this.commands.insertSessionBefore(request)
+  }
+
+  /**
+   * Create one Workspace Group with a unique non-blank title.
+   * @param request - proposed title.
+   * @returns the new Group and the complete resulting layout.
+   */
+  @Remote('createGroup')
+  createGroup(request: WorkspaceGroupCreateRequest): Promise<WorkspaceGroupValue> {
+    return this.commands.createGroup(request)
+  }
+
+  /**
+   * Rename one Workspace Group to a unique non-blank title.
+   * @param request - Group identity and proposed title.
+   * @returns the updated Group and the complete resulting layout.
+   */
+  @Remote('renameGroup')
+  renameGroup(request: WorkspaceGroupRenameRequest): Promise<WorkspaceGroupValue> {
+    return this.commands.renameGroup(request)
+  }
+
+  /**
+   * Dissolve one Group while retaining its Workspaces at the top level.
+   * @param request - Group identity to remove.
+   * @returns the complete resulting layout.
+   */
+  @Remote('deleteGroup')
+  deleteGroup(request: WorkspaceGroupDeleteRequest): Promise<WorkspaceLayoutValue> {
+    return this.commands.deleteGroup(request)
+  }
+
+  /**
+   * File one Workspace in a Group, or lift it to the top level.
+   * @param request - Workspace identity and optional target Group.
+   * @returns the complete resulting layout.
+   */
+  @Remote('moveToGroup')
+  moveToGroup(request: WorkspaceMoveToGroupRequest): Promise<WorkspaceLayoutValue> {
+    return this.commands.moveToGroup(request)
+  }
+
+  /**
+   * Create one Session Folder inside a Workspace.
+   * @param request - Workspace identity and proposed title.
+   * @returns the new Folder and its owning Workspace.
+   */
+  @Remote('createFolder')
+  createFolder(request: WorkspaceFolderCreateRequest): Promise<WorkspaceFolderValue> {
+    return this.commands.createFolder(request)
+  }
+
+  /**
+   * Rename one Session Folder.
+   * @param request - Workspace, Folder, and proposed title.
+   * @returns the updated Workspace projection.
+   */
+  @Remote('renameFolder')
+  renameFolder(request: WorkspaceFolderRenameRequest): Promise<WorkspaceValue> {
+    return this.commands.renameFolder(request)
+  }
+
+  /**
+   * Remove one Session Folder while retaining its Sessions in the Workspace.
+   * @param request - Workspace and Folder identities.
+   * @returns the updated Workspace projection.
+   */
+  @Remote('deleteFolder')
+  deleteFolder(request: WorkspaceFolderDeleteRequest): Promise<WorkspaceValue> {
+    return this.commands.deleteFolder(request)
+  }
+
+  /**
+   * File one accounted Session in a Folder, or return it to the Workspace root.
+   * @param request - Workspace, Session, and optional target Folder.
+   * @returns the updated Workspace projection.
+   */
+  @Remote('moveSessionToFolder')
+  moveSessionToFolder(request: WorkspaceMoveSessionToFolderRequest): Promise<WorkspaceValue> {
+    return this.commands.moveSessionToFolder(request)
   }
 
   /**

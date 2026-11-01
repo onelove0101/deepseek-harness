@@ -2,7 +2,7 @@
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { InputTriggerCrumb, PickAction } from '../types.ts'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { MenuState } from '../core/contract.ts'
+import type { FlyoutState, MenuState } from '../core/contract.ts'
 
 /** Injected business face of the MenuView overlay entry (copy rides the standard locale seat, not this face). */
 export interface MenuViewInjected {
@@ -10,6 +10,8 @@ export interface MenuViewInjected {
   menu: SnapshotStore<MenuState>
   /** Crumbs published per source for the open menu; sources without a header never appear. */
   headers: SnapshotStore<ReadonlyMap<string, readonly InputTriggerCrumb[]>>
+  /** The open `submenu` row's flyout, or null (read-only here; MenuView subscribes). */
+  flyout: SnapshotStore<FlyoutState | null>
   /**
    * Pointer pick routed back through the service pipeline.
    * @param source - source (group) name.
@@ -24,6 +26,16 @@ export interface MenuViewInjected {
    * @param index - candidate index within the group.
    */
   onHover: (source: string, index: number) => void
+  /**
+   * Pointer pick on one flyout row.
+   * @param index - row index within the flyout.
+   */
+  onFlyoutPick: (index: number) => void
+  /**
+   * Pointer hover on one flyout row, routed to the flyout highlight.
+   * @param index - row index within the flyout.
+   */
+  onFlyoutHover: (index: number) => void
   /**
    * Pointer pick on one header crumb, routed back through the source's drill path.
    * @param source - source (group) name.

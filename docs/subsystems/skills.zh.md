@@ -252,6 +252,78 @@ interface Config {
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.zh.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
 
+<a id="ctxexperts--expertservice"></a>
+
+### `ctx.experts` — `ExpertService`
+
+Host owner of the `experts` Remote namespace and of Expert invocation.
+
+```ts cordis-catalog
+/**
+ * Read the whole library.
+ * @param _request - no fields.
+ * @param signal - caller lifetime carried by the Remote transport.
+ * @returns Experts, documents without text, knowledge bases, and the bounds in force.
+ */
+@Remote list(_request: ExpertListRequest, signal: AbortSignal): Promise<ExpertLibraryValue>
+
+/**
+ * Create an Expert, or edit the Expert named by `request.id`.
+ * @param request - desired Expert fields.
+ * @param signal - caller lifetime carried by the Remote transport.
+ * @returns the library after the write.
+ * @throws RemoteError `expert/invalid`, `expert/not-found`, `expert/name-taken`, or `expert/limit-exceeded`.
+ */
+@Remote saveExpert(request: ExpertSaveRequest, signal: AbortSignal): Promise<ExpertLibraryValue>
+
+/**
+ * Delete one Expert.
+ * @param request - Expert to delete.
+ * @param signal - caller lifetime carried by the Remote transport.
+ * @returns the library after the write.
+ * @throws RemoteError `expert/not-found` when the Expert does not exist.
+ */
+@Remote deleteExpert(request: ExpertDeleteRequest, signal: AbortSignal): Promise<ExpertLibraryValue>
+
+/**
+ * Store one text document in the private library.
+ * @param request - title and text; the text arrives in the request, never as a path or URL.
+ * @param signal - caller lifetime carried by the Remote transport.
+ * @returns the library after the write.
+ * @throws RemoteError `expert/invalid` or `expert/limit-exceeded`.
+ */
+@Remote createDocument(request: ExpertDocumentCreateRequest, signal: AbortSignal): Promise<ExpertLibraryValue>
+
+/**
+ * Delete one document and drop it from every selection.
+ * @param request - document to delete.
+ * @param signal - caller lifetime carried by the Remote transport.
+ * @returns the library after the write.
+ * @throws RemoteError `expert/not-found` when the document does not exist.
+ */
+@Remote deleteDocument(request: ExpertDocumentDeleteRequest, signal: AbortSignal): Promise<ExpertLibraryValue>
+
+/**
+ * Create a knowledge base, or edit the one named by `request.id`.
+ * @param request - desired name and member documents.
+ * @param signal - caller lifetime carried by the Remote transport.
+ * @returns the library after the write.
+ * @throws RemoteError `expert/invalid`, `expert/not-found`, or `expert/limit-exceeded`.
+ */
+@Remote saveKnowledgeBase(request: ExpertKnowledgeBaseSaveRequest, signal: AbortSignal): Promise<ExpertLibraryValue>
+
+/**
+ * Delete one knowledge base and drop it from every Expert that selects it.
+ * @param request - knowledge base to delete.
+ * @param signal - caller lifetime carried by the Remote transport.
+ * @returns the library after the write.
+ * @throws RemoteError `expert/not-found` when the knowledge base does not exist.
+ */
+@Remote deleteKnowledgeBase(request: ExpertKnowledgeBaseDeleteRequest, signal: AbortSignal): Promise<ExpertLibraryValue>
+```
+
+Source: [`packages/preset/expert/src/index.ts`](../../packages/preset/expert/src/index.ts)
+
 <a id="ctxsessionskillcatalog--sessionskillcatalog"></a>
 
 ### `ctx.sessionSkillCatalog` — `SessionSkillCatalog`

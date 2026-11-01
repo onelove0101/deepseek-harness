@@ -18,6 +18,9 @@ import type { GroupNode, SearchResultNode, SessionNode } from '../src/client/tre
 import { en, zh } from '../src/client/locales.ts'
 import rowCss from '../src/client/rows/Rows.module.css'
 
+const runningClass = rowCss.running
+if (runningClass === undefined) throw new Error('running class missing from Rows.module.css')
+
 afterEach(cleanup)
 beforeEach(() => { vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(any-hover: hover)' })) })
 afterEach(() => { vi.unstubAllGlobals() })
@@ -376,6 +379,32 @@ describe('workspace browser rows', () => {
     expect(onOpen).toHaveBeenCalledWith(node.id)
   })
 
+  it('marks only running session rows with the aurora-border class', () => {
+    const node: SessionNode = {
+      id: sid('running'), title: 'Running Session', blank: false, running: true,
+      runningSubagentCount: 0, completed: false, hasActiveSchedule: false, updatedAt: 0,
+    }
+    const view = render(
+      <SessionNodeItem node={node} currentId={undefined} now={0} onOpen={vi.fn()}
+        onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} t={t} />,
+    )
+    const runningRow = screen.getByRole('treeitem')
+    expect(runningRow.classList.contains(runningClass)).toBe(true)
+
+    // Only the Session's own run loop qualifies: descendant or completed
+    // activity keeps the status dot but must not light the border.
+    view.rerender(
+      <SessionNodeItem node={{ ...node, running: false, runningSubagentCount: 1 }}
+        currentId={undefined} now={0} onOpen={vi.fn()}
+        onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} t={t} />,
+    )
+    const delegatedRow = screen.getByRole('treeitem')
+    expect(delegatedRow.classList.contains(runningClass)).toBe(false)
+    expect(delegatedRow.querySelector('[data-state="ongoing"]')).not.toBeNull()
+  })
+
+  it('keeps the active-Schedule marker between the title and time in grouped and flat rows', () => {
+    const onOpen = vi.fn()
   it('keeps a row.action entry click in the strip, so a plain button does not open the row', () => {
     const node: SessionNode = {
       id: sid('session'), title: 'Session', blank: false, running: false,

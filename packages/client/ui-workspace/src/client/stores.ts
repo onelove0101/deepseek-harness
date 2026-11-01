@@ -22,9 +22,9 @@ export type SessionOrderBy = 'manual' | 'updated'
 type WorkspaceViewState = {
   groupBy: SessionGroupBy
   orderBy: SessionOrderBy
-  /** Explicit group expansion keyed by Workspace identity, including descendants in tree mode. */
+  /** Explicit expansion for Workspace Groups, Workspaces, Folders, Ungrouped, and tree descendants. */
   groupExpansion: Record<string, boolean>
-  /** Saved manual order per Workspace group plus the browser-local flat-list account. */
+  /** Saved manual order per Workspace ownership account plus browser-local accounts. */
   sessionOrderByAccount: Record<string, string[]>
   /** Archived-row visibility; omitted in pre-filter v5 snapshots and read as 'default'. */
   archivedFilter?: ArchivedFilter
@@ -48,7 +48,11 @@ type WorkspaceViewActions = {
     initialOrders: Readonly<Record<string, readonly string[]>>,
   ) => void
   setGroupExpanded: (draft: WorkspaceViewState, key: string, expanded: boolean) => void
-  retainAccountKeys: (draft: WorkspaceViewState, workspaceKeys: readonly string[]) => void
+  retainAccountKeys: (
+    draft: WorkspaceViewState,
+    orderAccountKeys: readonly string[],
+    expansionKeys: readonly string[],
+  ) => void
   syncSessionOrders: (
     draft: WorkspaceViewState,
     orders: Readonly<Record<string, readonly string[]>>,
@@ -97,13 +101,14 @@ export function createWorkspaceViewStore(): EngineStoreHandle<WorkspaceViewState
         d.orderBy = mode
       },
       setGroupExpanded: (d, key: string, expanded: boolean) => { d.groupExpansion[key] = expanded },
-      retainAccountKeys: (d, workspaceKeys: readonly string[]) => {
-        const retained = new Set(workspaceKeys)
+      retainAccountKeys: (d, orderAccountKeys: readonly string[], expansionKeys: readonly string[]) => {
+        const orderAccounts = new Set(orderAccountKeys)
+        const expansions = new Set(expansionKeys)
         d.groupExpansion = Object.fromEntries(
-          Object.entries(d.groupExpansion).filter(([key]) => retained.has(key)),
+          Object.entries(d.groupExpansion).filter(([key]) => expansions.has(key)),
         )
         d.sessionOrderByAccount = Object.fromEntries(
-          Object.entries(d.sessionOrderByAccount).filter(([key]) => retained.has(key)),
+          Object.entries(d.sessionOrderByAccount).filter(([key]) => orderAccounts.has(key)),
         )
         delete (d as WorkspaceViewState & { sessionUpdatedAtByAccount?: unknown }).sessionUpdatedAtByAccount
       },

@@ -45,7 +45,9 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { SessionSearchResultItem } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { RemoteHostFacts } from '@deepseek-ai/dsh-api-remotes/client'
-import type { SessionActivity, WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type {
+  FolderId, GroupId, SessionActivity, WorkspaceId, WorkspaceView,
+} from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ShortcutCatalogEntry } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { WorkspaceShortcutState } from '../shortcuts.ts'
@@ -294,8 +296,24 @@ export type WorkspaceBrowserInjected = {
   renameWorkspace: (workspaceId: WorkspaceId, title: string) => Promise<void>
   /** Delete only a Host Workspace registration; directory and Session logs remain. */
   deleteWorkspace: (workspaceId: WorkspaceId) => Promise<void>
+  /** Create one durable Workspace Group. */
+  createGroup: (title: string) => Promise<void>
+  /** Rename one durable Workspace Group. */
+  renameGroup: (groupId: GroupId, title: string) => Promise<void>
+  /** Dissolve one durable Workspace Group without deleting its Workspaces. */
+  deleteGroup: (groupId: GroupId) => Promise<void>
+  /** File a Workspace in a Group, or return it to the top-level list. */
+  moveToGroup: (workspaceId: WorkspaceId, groupId?: GroupId) => Promise<void>
+  /** Create one logical Session Folder in a Workspace. */
+  createFolder: (workspaceId: WorkspaceId, title: string) => Promise<void>
+  /** Rename one logical Session Folder. */
+  renameFolder: (workspaceId: WorkspaceId, folderId: FolderId, title: string) => Promise<void>
+  /** Delete one Folder and return its Sessions to the Workspace root. */
+  deleteFolder: (workspaceId: WorkspaceId, folderId: FolderId) => Promise<void>
+  /** File an owned Session in a Folder, or return it to the Workspace root. */
+  moveSessionToFolder: (workspaceId: WorkspaceId, sessionId: SessionId, folderId?: FolderId) => Promise<void>
   /**
-   * Reorder a Workspace in the durable registry display order.
+   * Reorder a top-level Workspace in the durable registry display order.
    * Omitted anchor appends to the end.
    */
   insertWorkspaceBefore: (workspaceId: WorkspaceId, beforeWorkspaceId?: WorkspaceId) => Promise<void>

@@ -205,3 +205,35 @@ describe('WorkspaceBrowser.module.css list', () => {
     expect(declarations('.rail .search')?.get('width')).toBe('36px')
   })
 })
+
+describe('Rows.module.css running-session aurora border', () => {
+  it('renders a running row as a masked conic frame that animates its angle', () => {
+    const row = rowDeclarations('.sessionRow.running')
+    expect(row?.get('position')).toBe('relative')
+
+    const frame = rowDeclarations('.sessionRow.running::before')
+    expect(frame?.get('content')).toBe("''")
+    expect(frame?.get('position')).toBe('absolute')
+    expect(frame?.get('inset')).toBe('0')
+    expect(frame?.get('padding')).toBe('1px')
+    // The violet highlight travels a mostly transparent ring.
+    expect(frame?.get('background')).toContain('conic-gradient(')
+    expect(frame?.get('background')).toContain('from var(--dsh-session-row-aurora-angle)')
+    expect(frame?.get('background')).toContain('rgb(168, 130, 255)')
+    expect(frame?.get('background')).toContain('rgb(88, 60, 160)')
+    // Only the 1px frame stays visible; the row interior is masked out.
+    expect(frame?.get('mask')).toContain('content-box')
+    expect(frame?.get('mask-composite')).toBe('exclude')
+    expect(frame?.get('pointer-events')).toBe('none')
+    // Base rule animates the angle; the reduced-motion block may override it to none.
+    expect(rowsCss).toContain('animation: session-row-aurora 2.8s linear infinite')
+  })
+
+  it('registers the animated angle and stops it under reduced motion', () => {
+    expect(rowsCss).toContain('@property --dsh-session-row-aurora-angle')
+    expect(rowsCss).toContain("syntax: '<angle>'")
+    expect(rowsCss).toContain('@keyframes session-row-aurora')
+    const reducedMotion = rowsCss.slice(rowsCss.indexOf('@media (prefers-reduced-motion: reduce)'))
+    expect(reducedMotion).toContain('.sessionRow.running::before')
+  })
+})

@@ -11,7 +11,20 @@ import type {
   WorkspaceCreateRequest,
   WorkspaceCreateValue,
   WorkspaceDeleteValue,
+  WorkspaceFolderCreateRequest,
+  WorkspaceFolderDeleteRequest,
+  WorkspaceFolderRenameRequest,
+  WorkspaceFolderValue,
+  WorkspaceGroupCreateRequest,
+  WorkspaceGroupDeleteRequest,
+  WorkspaceGroupRenameRequest,
+  WorkspaceGroupValue,
+  WorkspaceGroupView,
   WorkspaceInsertSessionBeforeRequest,
+  WorkspaceLayout,
+  WorkspaceLayoutValue,
+  WorkspaceMoveSessionToFolderRequest,
+  WorkspaceMoveToGroupRequest,
   WorkspaceOrderValue,
   WorkspacePinSessionRequest,
   WorkspacePinValue,
@@ -30,7 +43,12 @@ export type WorkspaceListPhase = 'pending' | 'ready'
 
 /** Immutable Client Workspace state. */
 export interface WorkspaceSnapshot {
+  /** Every Workspace in layout order: top-level Workspaces first, then each Group's members. */
   readonly items: readonly WorkspaceView[]
+  /** Workspaces outside every Group, in display order. */
+  readonly topLevelWorkspaceIds: readonly WorkspaceId[]
+  /** Groups in display order, each listing its member Workspaces in order. */
+  readonly groups: readonly WorkspaceGroupView[]
   /** Complete registry-global archive set in Host order. */
   readonly archivedSessionIds: WorkspaceArchiveValue['archivedSessionIds']
   /** Complete registry-global pin set, most recently pinned first. */
@@ -48,8 +66,8 @@ export interface WorkspaceFollowSink {
   upsertView(workspace: WorkspaceView): void
   /** Remove one Workspace row. */
   removeView(workspaceId: WorkspaceId): void
-  /** Replace the Host-confirmed Workspace order. */
-  replaceOrder(workspaceIds: readonly WorkspaceId[]): void
+  /** Replace the Host-confirmed top-level order and Group membership. */
+  replaceLayout(layout: WorkspaceLayout): void
   /** Replace the complete archived Session set. */
   replaceArchived(sessionIds: WorkspaceArchiveValue['archivedSessionIds']): void
   /** Replace the complete pinned Session set. */
@@ -61,23 +79,29 @@ export interface WorkspaceFollowSink {
  */
 export class ClientWorkspaceModel implements WorkspaceFollowSink {
   private items: readonly WorkspaceView[] = []
+  private topLevelWorkspaceIds: readonly WorkspaceId[] = []
+  private groups: readonly WorkspaceGroupView[] = []
   private archivedSessionIds: WorkspaceArchiveValue['archivedSessionIds'] = []
   private pinnedSessionIds: WorkspacePinValue['pinnedSessionIds'] = []
   private state: WorkspaceSnapshot['state'] = 'loading'
   private phase: WorkspaceListPhase = 'pending'
   private error: RemoteFailure | null = null
-  /** Latest local reorder request; only its unary echo may install order. */
-  private orderRequestGeneration = 0
-  /** Increments on stream orders so a later remote commit outranks an older unary echo. */
-  private orderFrameGeneration = 0
-  /** Last complete order accepted from a baseline, increment, or current unary echo. */
-  private committedOrder: WorkspaceId[] = []
+  /** Latest structural request (reorder or Group command); only its unary echo may install a layout. */
+  private layoutRequestGeneration = 0
+  /** Increments on stream layouts so a later remote commit outranks an older unary echo. */
+  private layoutFrameGeneration = 0
+  /** Last complete layout accepted from a baseline, increment, or current unary echo. */
+  private committedLayout: WorkspaceLayout = { topLevelWorkspaceIds: [], groups: [] }
   /** Latest archive-set request; a later request or a pushed set supersedes it. */
   private archiveRequestSeq = 0
   /** Latest pin-set request; a later request or a pushed set supersedes it. */
   private pinRequestSeq = 0
   /** Host Workspace ids are never reused, so delayed data cannot resurrect a removed row. */
   private readonly removedIds = new Set<WorkspaceId>()
+  /** Monotone follow-frame revision for resolving equal-timestamp row races. */
+  private streamRevision = 0
+  /** Latest follow-frame revision received for each Workspace row. */
+  private readonly streamedRevisions = new Map<WorkspaceId, number>()
   private readonly listeners = new Set<() => void>()
   private snapshotCache: WorkspaceSnapshot
   private snapshotDirty = false
@@ -96,9 +120,7 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
    * @returns generated Remote result.
    */
   async create(input: WorkspaceCreateRequest): Promise<RemoteResult<WorkspaceCreateValue>> {
-    const result = await this.remote.create(input)
-    if (result.ok) this.upsert(result.value.workspace)
-    return result
+    return await this.rowMutation(() => this.remote.create(input), result => result.workspace)
   }
 
   /**
@@ -119,9 +141,7 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
    * @returns generated Remote result.
    */
   async rename(workspaceId: WorkspaceId, title: string): Promise<RemoteResult<WorkspaceValue>> {
-    const result = await this.remote.rename({ workspaceId, title })
-    if (result.ok) this.upsert(result.value.workspace)
-    return result
+    return await this.rowMutation(() => this.remote.rename({ workspaceId, title }), result => result.workspace)
   }
 
   /**
@@ -145,19 +165,135 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
     workspaceId: WorkspaceId,
     beforeWorkspaceId?: WorkspaceId,
   ): Promise<RemoteResult<WorkspaceOrderValue>> {
-    const requestGeneration = ++this.orderRequestGeneration
-    const frameGeneration = this.orderFrameGeneration
-    const localOrder = this.items.map(workspace => workspace.workspaceId)
-    this.installOrder(insertIdBefore(localOrder, workspaceId, beforeWorkspaceId))
+    const requestGeneration = ++this.layoutRequestGeneration
+    const frameGeneration = this.layoutFrameGeneration
+    this.installLayout({
+      topLevelWorkspaceIds: insertIdBefore(this.topLevelWorkspaceIds, workspaceId, beforeWorkspaceId),
+      groups: this.groups,
+    })
     const result = await this.remote.insertBefore({
       workspaceId,
       ...beforeWorkspaceId === undefined ? {} : { beforeWorkspaceId },
     })
-    if (requestGeneration === this.orderRequestGeneration
-      && frameGeneration === this.orderFrameGeneration) {
-      this.installOrder(result.ok ? result.value.workspaceIds : this.committedOrder, result.ok)
+    if (requestGeneration === this.layoutRequestGeneration
+      && frameGeneration === this.layoutFrameGeneration) {
+      if (result.ok) {
+        this.installLayout({ topLevelWorkspaceIds: result.value.workspaceIds, groups: this.groups }, true)
+      } else {
+        this.installLayout(this.committedLayout)
+      }
     }
     return result
+  }
+
+  /**
+   * Create a Workspace Group and install the returned complete layout.
+   * @param title - proposed unique Group title.
+   * @returns generated Remote result.
+   */
+  async createGroup(title: WorkspaceGroupCreateRequest['title']): Promise<RemoteResult<WorkspaceGroupValue>> {
+    return await this.structural(() => this.remote.createGroup({ title }))
+  }
+
+  /**
+   * Rename a Workspace Group and install the returned complete layout.
+   * @param groupId - target Group.
+   * @param title - proposed unique Group title.
+   * @returns generated Remote result.
+   */
+  async renameGroup(
+    groupId: WorkspaceGroupRenameRequest['groupId'],
+    title: WorkspaceGroupRenameRequest['title'],
+  ): Promise<RemoteResult<WorkspaceGroupValue>> {
+    return await this.structural(() => this.remote.renameGroup({ groupId, title }))
+  }
+
+  /**
+   * Dissolve a Workspace Group and install the returned complete layout.
+   * @param groupId - Group to dissolve.
+   * @returns generated Remote result.
+   */
+  async deleteGroup(groupId: WorkspaceGroupDeleteRequest['groupId']): Promise<RemoteResult<WorkspaceLayoutValue>> {
+    return await this.structural(() => this.remote.deleteGroup({ groupId }))
+  }
+
+  /**
+   * File a Workspace in a Group, or lift it to the top level, and install the returned layout.
+   * @param workspaceId - Workspace to file.
+   * @param groupId - target Group; omitted lifts to the top level.
+   * @returns generated Remote result.
+   */
+  async moveToGroup(
+    workspaceId: WorkspaceMoveToGroupRequest['workspaceId'],
+    groupId?: WorkspaceMoveToGroupRequest['groupId'],
+  ): Promise<RemoteResult<WorkspaceLayoutValue>> {
+    return await this.structural(() => this.remote.moveToGroup({
+      workspaceId,
+      ...groupId === undefined ? {} : { groupId },
+    }))
+  }
+
+  /**
+   * Create a Session Folder and merge the returned owning Workspace.
+   * @param workspaceId - owning Workspace.
+   * @param title - proposed unique Folder title.
+   * @returns generated Remote result.
+   */
+  async createFolder(
+    workspaceId: WorkspaceFolderCreateRequest['workspaceId'],
+    title: WorkspaceFolderCreateRequest['title'],
+  ): Promise<RemoteResult<WorkspaceFolderValue>> {
+    return await this.rowMutation(() => this.remote.createFolder({ workspaceId, title }), result => result.workspace)
+  }
+
+  /**
+   * Rename a Session Folder and merge the returned owning Workspace.
+   * @param workspaceId - owning Workspace.
+   * @param folderId - target Folder.
+   * @param title - proposed unique Folder title.
+   * @returns generated Remote result.
+   */
+  async renameFolder(
+    workspaceId: WorkspaceFolderRenameRequest['workspaceId'],
+    folderId: WorkspaceFolderRenameRequest['folderId'],
+    title: WorkspaceFolderRenameRequest['title'],
+  ): Promise<RemoteResult<WorkspaceValue>> {
+    return await this.rowMutation(() => this.remote.renameFolder({ workspaceId, folderId, title }), result => result.workspace)
+  }
+
+  /**
+   * Delete a Session Folder and merge the returned owning Workspace.
+   * @param workspaceId - owning Workspace.
+   * @param folderId - Folder to remove.
+   * @returns generated Remote result.
+   */
+  async deleteFolder(
+    workspaceId: WorkspaceFolderDeleteRequest['workspaceId'],
+    folderId: WorkspaceFolderDeleteRequest['folderId'],
+  ): Promise<RemoteResult<WorkspaceValue>> {
+    return await this.rowMutation(() => this.remote.deleteFolder({ workspaceId, folderId }), result => result.workspace)
+  }
+
+  /**
+   * File a Session in a Folder, or return it to the Workspace root, and merge the owning Workspace.
+   * @param workspaceId - owning Workspace.
+   * @param sessionId - Session to file.
+   * @param folderId - target Folder; omitted returns the Session to the root.
+   * @returns generated Remote result.
+   */
+  async moveSessionToFolder(
+    workspaceId: WorkspaceMoveSessionToFolderRequest['workspaceId'],
+    sessionId: WorkspaceMoveSessionToFolderRequest['sessionId'],
+    folderId?: WorkspaceMoveSessionToFolderRequest['folderId'],
+  ): Promise<RemoteResult<WorkspaceValue>> {
+    return await this.rowMutation(
+      () => this.remote.moveSessionToFolder({
+        workspaceId,
+        sessionId,
+        ...folderId === undefined ? {} : { folderId },
+      }),
+      result => result.workspace,
+    )
   }
 
   /**
@@ -172,13 +308,14 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
     sessionId: WorkspaceInsertSessionBeforeRequest['sessionId'],
     beforeSessionId?: WorkspaceInsertSessionBeforeRequest['beforeSessionId'],
   ): Promise<RemoteResult<WorkspaceValue>> {
-    const result = await this.remote.insertSessionBefore({
-      workspaceId,
-      sessionId,
-      ...beforeSessionId === undefined ? {} : { beforeSessionId },
-    })
-    if (result.ok) this.upsert(result.value.workspace)
-    return result
+    return await this.rowMutation(
+      () => this.remote.insertSessionBefore({
+        workspaceId,
+        sessionId,
+        ...beforeSessionId === undefined ? {} : { beforeSessionId },
+      }),
+      result => result.workspace,
+    )
   }
 
   /**
@@ -262,10 +399,16 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
    * @param baseline - complete Workspace and archive projection.
    */
   replaceBaseline(baseline: WorkspaceBaseline): void {
-    this.orderFrameGeneration++
+    this.layoutFrameGeneration++
     this.archiveRequestSeq++
     this.pinRequestSeq++
+    this.streamRevision++
+    this.streamedRevisions.clear()
+    for (const workspace of baseline.items) {
+      this.streamedRevisions.set(workspace.workspaceId, this.streamRevision)
+    }
     this.installViews(baseline.items)
+    this.installLayout(baseline, true)
     this.installArchived(baseline.archivedSessionIds)
     this.installPinned(baseline.pinnedSessionIds)
     this.state = 'idle'
@@ -276,6 +419,8 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
 
   /** Merge one decoded Workspace upsert from the current follow generation. */
   upsertView(workspace: WorkspaceView): void {
+    this.streamRevision++
+    this.streamedRevisions.set(workspace.workspaceId, this.streamRevision)
     this.upsert(workspace)
   }
 
@@ -284,10 +429,10 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
     this.remove(workspaceId)
   }
 
-  /** Replace Host-confirmed order from the current follow generation. */
-  replaceOrder(workspaceIds: readonly WorkspaceId[]): void {
-    this.orderFrameGeneration++
-    this.installOrder(workspaceIds, true)
+  /** Replace the Host-confirmed layout from the current follow generation. */
+  replaceLayout(layout: WorkspaceLayout): void {
+    this.layoutFrameGeneration++
+    this.installLayout(layout, true)
   }
 
   /**
@@ -348,6 +493,8 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
   private buildSnapshot(): WorkspaceSnapshot {
     return {
       items: this.items,
+      topLevelWorkspaceIds: this.topLevelWorkspaceIds,
+      groups: this.groups,
       archivedSessionIds: this.archivedSessionIds,
       pinnedSessionIds: this.pinnedSessionIds,
       state: this.state,
@@ -370,26 +517,102 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
     this.invalidate()
   }
 
-  private installOrder(workspaceIds: readonly WorkspaceId[], committed = false): void {
-    if (committed) this.committedOrder = [...workspaceIds]
-    const rank = new Map(workspaceIds.map((id, index) => [id, index]))
-    const items = [...this.items].sort((left, right) =>
-      (rank.get(left.workspaceId) ?? Number.MAX_SAFE_INTEGER)
-      - (rank.get(right.workspaceId) ?? Number.MAX_SAFE_INTEGER))
-    if (items.every((item, index) => item === this.items[index])) return
-    this.items = items
+  /**
+   * Merge a row-command echo unless a later follow frame updated that row.
+   */
+  private async rowMutation<T>(
+    send: () => Promise<RemoteResult<T>>,
+    view: (value: T) => WorkspaceView,
+  ): Promise<RemoteResult<T>> {
+    const streamRevision = this.streamRevision
+    const result = await send()
+    if (result.ok) {
+      const workspace = view(result.value)
+      const streamedRevision = this.streamedRevisions.get(workspace.workspaceId)
+      if (streamedRevision === undefined || streamedRevision <= streamRevision) {
+        this.upsert(workspace)
+      }
+    }
+    return result
+  }
+
+  /**
+   * Start one structural Remote request and install its layout unless a later
+   * structural request or stream layout superseded it.
+   */
+  private async structural<T extends { readonly layout: WorkspaceLayout }>(
+    send: () => Promise<RemoteResult<T>>,
+  ): Promise<RemoteResult<T>> {
+    const requestGeneration = ++this.layoutRequestGeneration
+    const frameGeneration = this.layoutFrameGeneration
+    const result = await send()
+    if (result.ok
+      && requestGeneration === this.layoutRequestGeneration
+      && frameGeneration === this.layoutFrameGeneration) {
+      this.installLayout(result.value.layout, true)
+    }
+    return result
+  }
+
+  /**
+   * Re-sort the installed rows by one layout. Layout ids without a row are
+   * skipped; rows the layout does not place stay at the end of the top level.
+   */
+  private installLayout(
+    layout: Pick<WorkspaceLayout, 'topLevelWorkspaceIds' | 'groups'>,
+    committed = false,
+  ): void {
+    if (committed) {
+      this.committedLayout = {
+        topLevelWorkspaceIds: [...layout.topLevelWorkspaceIds],
+        groups: layout.groups,
+      }
+    }
+    const rows = new Map(this.items.map(item => [item.workspaceId, item]))
+    const groups = layout.groups.map(group => ({
+      ...group,
+      workspaceIds: group.workspaceIds.filter(id => rows.has(id)),
+    }))
+    const topLevel = layout.topLevelWorkspaceIds.filter(id => rows.has(id))
+    const placed = new Set([...topLevel, ...groups.flatMap(group => group.workspaceIds)])
+    const unplaced = this.items.map(item => item.workspaceId).filter(id => !placed.has(id))
+    const nextTopLevel = [...topLevel, ...unplaced]
+    const ordered = [...nextTopLevel, ...groups.flatMap(group => group.workspaceIds)]
+    const nextItems = ordered.flatMap((id) => {
+      const row = rows.get(id)
+      return row === undefined ? [] : [row]
+    })
+    const nextGroups = groups.map((group, index) => {
+      const previous = this.groups[index]
+      return previous !== undefined && sameGroup(group, previous) ? previous : group
+    })
+    const unchanged = nextItems.length === this.items.length
+      && nextItems.every((item, index) => item === this.items[index])
+      && sameIds(nextTopLevel, this.topLevelWorkspaceIds)
+      && nextGroups.length === this.groups.length
+      && nextGroups.every((group, index) => group === this.groups[index])
+    if (unchanged) return
+    this.items = nextItems
+    this.topLevelWorkspaceIds = nextTopLevel
+    this.groups = nextGroups
     this.invalidate()
   }
 
   private upsert(view: WorkspaceView): void {
-    if (this.removedIds.has(view.workspaceId)) return
+    if (this.removedIds.has(view.workspaceId)) {
+      return
+    }
     const index = this.items.findIndex(item => item.workspaceId === view.workspaceId)
     const installed = this.items[index]
-    // Unary responses and stream increments race on separate requests. Keep
-    // the newest Host projection regardless of their arrival order.
-    if (installed !== undefined && Date.parse(view.updatedAt) < Date.parse(installed.updatedAt)) return
-    if (!this.committedOrder.includes(view.workspaceId)) {
-      this.committedOrder = [view.workspaceId, ...this.committedOrder]
+    if (installed !== undefined && Date.parse(view.updatedAt) < Date.parse(installed.updatedAt)) {
+      return
+    }
+    if (index === -1) {
+      this.committedLayout = {
+        ...this.committedLayout,
+        topLevelWorkspaceIds: [view.workspaceId, ...this.committedLayout.topLevelWorkspaceIds],
+      }
+      this.topLevelWorkspaceIds = [view.workspaceId, ...this.topLevelWorkspaceIds]
     }
     this.items = index === -1
       ? [view, ...this.items]
@@ -399,7 +622,8 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
 
   private remove(workspaceId: WorkspaceId, immediate = false): void {
     this.removedIds.add(workspaceId)
-    this.committedOrder = this.committedOrder.filter(id => id !== workspaceId)
+    this.streamedRevisions.delete(workspaceId)
+    this.committedLayout = withoutWorkspace(this.committedLayout, workspaceId)
     const items = this.items.filter(item => item.workspaceId !== workspaceId)
     if (items.length === this.items.length) {
       // A successful unary echo still publishes an earlier increment's
@@ -408,6 +632,10 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
       return
     }
     this.items = items
+    this.topLevelWorkspaceIds = this.topLevelWorkspaceIds.filter(id => id !== workspaceId)
+    this.groups = this.groups.map(group => group.workspaceIds.includes(workspaceId)
+      ? { ...group, workspaceIds: group.workspaceIds.filter(id => id !== workspaceId) }
+      : group)
     this.invalidate(immediate)
   }
 
@@ -417,7 +645,6 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
       if (!this.removedIds.has(view.workspaceId)) installed.set(view.workspaceId, view)
     }
     this.items = [...installed.values()]
-    this.committedOrder = views.map(view => view.workspaceId)
   }
 
   private invalidate(immediate = false): void {
@@ -464,4 +691,26 @@ function insertIdBefore(
   const without = ids.filter(candidate => candidate !== id)
   const at = beforeId === undefined ? without.length : without.indexOf(beforeId)
   return [...without.slice(0, at), id, ...without.slice(at)]
+}
+
+function sameIds(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((id, index) => id === right[index])
+}
+
+function sameGroup(group: WorkspaceGroupView, installed: WorkspaceGroupView | undefined): boolean {
+  return installed !== undefined
+    && installed.groupId === group.groupId
+    && installed.title === group.title
+    && installed.createdAt === group.createdAt
+    && installed.updatedAt === group.updatedAt
+    && sameIds(installed.workspaceIds, group.workspaceIds)
+}
+
+function withoutWorkspace(layout: WorkspaceLayout, workspaceId: WorkspaceId): WorkspaceLayout {
+  return {
+    topLevelWorkspaceIds: layout.topLevelWorkspaceIds.filter(id => id !== workspaceId),
+    groups: layout.groups.map(group => group.workspaceIds.includes(workspaceId)
+      ? { ...group, workspaceIds: group.workspaceIds.filter(id => id !== workspaceId) }
+      : group),
+  }
 }

@@ -70,6 +70,12 @@ export interface InputTriggerCandidate {
    * resolving the candidate.
    */
   readonly drill?: boolean
+  /**
+   * The row owns a flyout of nested candidates (see {@link InputTriggerSource.submenu}):
+   * hovering it, or Enter / Tab on it, lists them beside the row instead of
+   * settling the row itself.
+   */
+  readonly submenu?: boolean
 }
 
 /**
@@ -118,6 +124,8 @@ export interface CandidateRequest {
   readonly position: TriggerPosition
   /** Whether this menu was opened or last re-scoped by a drill pick; see {@link HeaderRequest.drilled}. */
   readonly drilled: boolean
+  /** Present only when Composer chrome opened this source programmatically. */
+  readonly origin?: 'launcher'
   readonly signal: AbortSignal
 }
 
@@ -130,6 +138,8 @@ export interface InputTriggerPick {
   /** Settling pick, or the candidate's drill action (Tab / row chevron). */
   readonly action: PickAction
   readonly span: TokenSpan
+  /** The submenu row this candidate was listed under; absent for a top-level pick. */
+  readonly parent?: InputTriggerCandidate
 }
 
 /**
@@ -178,6 +188,16 @@ export interface InputTriggerSource {
    * @returns the crumbs to render, or undefined for no header.
    */
   header?(session: ClientSessionContext, req: HeaderRequest): readonly InputTriggerCrumb[] | undefined
+  /**
+   * Nested candidates of one {@link InputTriggerCandidate.submenu} row, read
+   * again each time the flyout opens. A pick of one of them reaches
+   * {@link InputTriggerSource.onPick} with `parent` set to the row.
+   * @param session - stable session projection.
+   * @param parent - the hovered or entered row.
+   * @param signal - aborted when the flyout closes.
+   * @returns the flyout rows in display order.
+   */
+  submenu?(session: ClientSessionContext, parent: InputTriggerCandidate, signal: AbortSignal): Promise<readonly InputTriggerCandidate[]>
   /** Every pick lands here; claim/insert outcomes are executed by the pipeline via the scoped input events. */
   onPick(pick: InputTriggerPick): PickOutcome
   /** Synchronous space-time adjudication over hot state only. `token` is the just-completed leading token (e.g. '/goal'). */

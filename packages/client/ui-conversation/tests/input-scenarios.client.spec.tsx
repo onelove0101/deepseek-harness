@@ -277,6 +277,27 @@ describe('scenario A: menu-pick /goal, type args, enter submits', () => {
   })
 })
 
+describe('scenario: Composer add menu', () => {
+  it('opens the command source with launcher provenance', async () => {
+    const candidates = vi.fn(async (_session: ClientSessionContext, _request: { origin?: 'launcher' }) => [{ name: 'expert' }])
+    const b = await scopedBench((inputTriggers) => {
+      inputTriggers.registerSource({
+        trigger: '/',
+        name: 'command',
+        candidates,
+        onPick: () => undefined,
+      })
+    })
+
+    fireEvent.click(b.view.getByRole('button', { name: '添加文件或调用指令' }))
+
+    await vi.waitFor(() => {
+      expect(candidates).toHaveBeenCalledExactlyOnceWith(expect.anything(), expect.objectContaining({ origin: 'launcher' }))
+    })
+    expect(b.controller.launcher.getSnapshot()).toBe('command')
+  })
+})
+
 describe('scenario C: pasted /goal xxx + enter (menu never opened)', () => {
   it('adjudicates on enter, claims and submits in one stroke', async () => {
     const b = await bench()

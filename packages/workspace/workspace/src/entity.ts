@@ -8,11 +8,12 @@
  * @module @deepseek-ai/dsh-workspace/src/entity
  */
 
+import { randomUUID } from 'node:crypto'
 import { stat } from 'node:fs/promises'
 import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
 import type { KvTable } from '@deepseek-ai/dsh-storage-domain'
-import type { WorkspaceRecord } from './spec.ts'
-import type { Workspace, WorkspaceId } from './types.ts'
+import type { WorkspaceFolderRecord, WorkspaceRecord } from './spec.ts'
+import type { FolderId, Workspace, WorkspaceFolder, WorkspaceId } from './types.ts'
 import { realpathNormalize } from './paths.ts'
 
 /** An insertSessionBefore request named a session or anchor not on the account (storage failures stay plain errors). */
@@ -23,6 +24,17 @@ export class WorkspaceMoveInvalidError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'WorkspaceMoveInvalidError'
+  }
+}
+
+/** A Folder operation named an unknown folder or an unowned Session. */
+export class WorkspaceFolderInvalidError extends Error {
+  /**
+   * @param message - The rejected filing or Folder operation.
+   */
+  constructor(message: string) {
+    super(message)
+    this.name = 'WorkspaceFolderInvalidError'
   }
 }
 
@@ -103,6 +115,11 @@ export class WorkspaceEntity implements Workspace {
     return this.record.sessionIds.filter(id => this.host.candidateMatches(id, this.record.path))
   }
 
+  get folders(): readonly WorkspaceFolder[] {
+    const accounted = new Set(this.sessionIds)
+    return this.record.folders.map(folder => this.folderView(folder, accounted))
+  }
+
   async setTitle(title: string): Promise<void> {
     await this.mutate(record => ({ ...record, title }))
   }
@@ -173,9 +190,85 @@ export class WorkspaceEntity implements Workspace {
   }
 
   async detachSession(sessionId: SessionId): Promise<void> {
-    await this.mutate(record => record.sessionIds.includes(sessionId)
-      ? { ...record, sessionIds: record.sessionIds.filter(id => id !== sessionId) }
-      : record)
+    await this.mutate((record) => {
+      const sessionIds = record.sessionIds.filter(id => id !== sessionId)
+      const now = new Date().toISOString()
+      const folders = record.folders.map((folder) => {
+        const next = folder.sessionIds.filter(id => id !== sessionId)
+        return next.length === folder.sessionIds.length ? folder : { ...folder, sessionIds: next, updatedAt: now }
+      })
+      return sessionIds.length === record.sessionIds.length
+        && folders.every((folder, index) => folder === record.folders[index])
+        ? record
+        : { ...record, sessionIds, folders }
+    })
+  }
+
+  async createFolder(title: string): Promise<WorkspaceFolder> {
+    const id = randomUUID() as FolderId
+    const now = new Date().toISOString()
+    const folder: WorkspaceFolderRecord = { id, title, sessionIds: [], createdAt: now, updatedAt: now }
+    await this.mutate(record => ({ ...record, folders: [...record.folders, folder] }))
+    const created = this.folders.find(candidate => candidate.id === id)
+    if (created === undefined) {
+      throw new WorkspaceFolderInvalidError(`created folder '${id}' is unavailable in workspace '${this.path}'`)
+    }
+    return created
+  }
+
+  async setFolderTitle(folderId: FolderId, title: string): Promise<void> {
+    await this.mutate((record) => {
+      const index = record.folders.findIndex(folder => folder.id === folderId)
+      if (index === -1) {
+        throw new WorkspaceFolderInvalidError(`unknown folder '${folderId}' in workspace '${record.path}'`)
+      }
+      const folder = record.folders[index]
+      if (folder === undefined) {
+        throw new WorkspaceFolderInvalidError(`unknown folder '${folderId}' in workspace '${record.path}'`)
+      }
+      if (folder.title === title) {
+        return record
+      }
+      const folders = record.folders.slice()
+      folders[index] = { ...folder, title, updatedAt: new Date().toISOString() }
+      return { ...record, folders }
+    })
+  }
+
+  async deleteFolder(folderId: FolderId): Promise<void> {
+    await this.mutate((record) => {
+      if (!record.folders.some(folder => folder.id === folderId)) {
+        throw new WorkspaceFolderInvalidError(`unknown folder '${folderId}' in workspace '${record.path}'`)
+      }
+      return { ...record, folders: record.folders.filter(folder => folder.id !== folderId) }
+    })
+  }
+
+  async moveSessionToFolder(sessionId: SessionId, folderId?: FolderId): Promise<void> {
+    await this.mutate((record) => {
+      if (!record.sessionIds.includes(sessionId)) {
+        throw new WorkspaceFolderInvalidError(
+          `cannot file session '${sessionId}' in workspace '${record.path}': the session is not accounted`,
+        )
+      }
+      if (folderId !== undefined && !record.folders.some(folder => folder.id === folderId)) {
+        throw new WorkspaceFolderInvalidError(`unknown folder '${folderId}' in workspace '${record.path}'`)
+      }
+      const now = new Date().toISOString()
+      const folders = record.folders.map((folder) => {
+        const without = folder.sessionIds.filter(id => id !== sessionId)
+        if (folder.id !== folderId) {
+          return without.length === folder.sessionIds.length
+            ? folder
+            : { ...folder, sessionIds: without, updatedAt: now }
+        }
+        if (without.length === folder.sessionIds.length - 1 && folder.sessionIds.at(-1) === sessionId) {
+          return folder
+        }
+        return { ...folder, sessionIds: [...without, sessionId], updatedAt: now }
+      })
+      return folders.every((folder, index) => folder === record.folders[index]) ? record : { ...record, folders }
+    })
   }
 
   async status(): Promise<'ok' | 'missing-dir'> {
@@ -208,10 +301,13 @@ export class WorkspaceEntity implements Workspace {
         const sessionIds = changed.sessionIds.filter(
           id => this.host.candidateMatches(id, changed.path),
         )
-        if (changed === current && sessionIds.length === current.sessionIds.length) {
+        const folders = normalizeFolders(changed.folders, sessionIds)
+        if (changed === current
+          && sessionIds.length === current.sessionIds.length
+          && foldersEqual(folders, current.folders)) {
           throw unchangedSentinel
         }
-        return { ...changed, sessionIds, updatedAt: new Date().toISOString() }
+        return { ...changed, sessionIds, folders, updatedAt: new Date().toISOString() }
       })
     } catch (error) {
       if (error === unchangedSentinel) return
@@ -219,4 +315,51 @@ export class WorkspaceEntity implements Workspace {
     }
     this.record = next
   }
+
+  /** Project one stored Folder using only currently valid Workspace members. */
+  private folderView(record: WorkspaceFolderRecord, accounted: ReadonlySet<SessionId>): WorkspaceFolder {
+    return {
+      id: record.id,
+      title: record.title,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+      sessionIds: record.sessionIds.filter(id => accounted.has(id)),
+    }
+  }
+}
+
+/** Retain only first Folder occurrences of valid Workspace-owned Session ids. */
+function normalizeFolders(
+  folders: readonly WorkspaceFolderRecord[],
+  sessionIds: readonly SessionId[],
+): WorkspaceFolderRecord[] {
+  const accounted = new Set(sessionIds)
+  const filed = new Set<SessionId>()
+  const now = new Date().toISOString()
+  return folders.map((folder) => {
+    const next = folder.sessionIds.filter((id) => {
+      if (!accounted.has(id) || filed.has(id)) {
+        return false
+      }
+      filed.add(id)
+      return true
+    })
+    return next.length === folder.sessionIds.length
+      ? folder
+      : { ...folder, sessionIds: next, updatedAt: now }
+  })
+}
+
+/** Compare Folder record arrays by their stored identities and Session order. */
+function foldersEqual(left: readonly WorkspaceFolderRecord[], right: readonly WorkspaceFolderRecord[]): boolean {
+  return left.length === right.length && left.every((folder, index) => {
+    const candidate = right[index]
+    return candidate !== undefined
+      && folder.id === candidate.id
+      && folder.title === candidate.title
+      && folder.createdAt === candidate.createdAt
+      && folder.updatedAt === candidate.updatedAt
+      && folder.sessionIds.length === candidate.sessionIds.length
+      && folder.sessionIds.every((id, sessionIndex) => id === candidate.sessionIds[sessionIndex])
+  })
 }

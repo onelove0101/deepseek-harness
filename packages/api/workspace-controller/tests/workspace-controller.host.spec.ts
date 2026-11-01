@@ -338,6 +338,8 @@ describe('WorkspaceController follow', () => {
     const feed = new WorkspaceFeed(ctx)
     expect(feed.baseline()).toMatchObject({
       items: [{ workspaceId: existing.id }],
+      topLevelWorkspaceIds: [existing.id],
+      groups: [],
     })
 
     expect(() => {
@@ -354,6 +356,174 @@ describe('WorkspaceController follow', () => {
         },
       })
     }).toThrow('references missing Workspace "missing"')
+    expect(feed.baseline()).toMatchObject({
+      items: [{ workspaceId: existing.id }],
+      topLevelWorkspaceIds: [existing.id],
+    })
+  })
+
+  it('keeps Group members in complete baselines and streams a Folder-only row update', async () => {
+    const { controller, ctx, root } = await harness()
+    const first = await controller.create({ path: stageDir(root, 'first') })
+    const second = await controller.create({ path: stageDir(root, 'second') })
+    const group = await controller.createGroup({ title: 'Team' })
+    await controller.moveToGroup({
+      workspaceId: first.workspace.workspaceId,
+      groupId: group.group.groupId,
+    })
+
+    const abort = new AbortController()
+    const iterator = controller.follow(abort.signal)[Symbol.asyncIterator]()
+    await expect(nextFrame(iterator)).resolves.toEqual({
+      type: 'baseline',
+      value: {
+        items: [
+          expect.objectContaining({ workspaceId: second.workspace.workspaceId, folders: [] }),
+          expect.objectContaining({ workspaceId: first.workspace.workspaceId, folders: [] }),
+        ],
+        topLevelWorkspaceIds: [second.workspace.workspaceId],
+        groups: [expect.objectContaining({
+          groupId: group.group.groupId,
+          title: 'Team',
+          workspaceIds: [first.workspace.workspaceId],
+        })],
+        archivedSessionIds: [],
+        pinnedSessionIds: [],
+      },
+    })
+
+    const folder = await controller.createFolder({
+      workspaceId: first.workspace.workspaceId,
+      title: 'Filed',
+    })
+    await expect(nextFrame(iterator)).resolves.toEqual({
+      type: 'upsert',
+      workspace: expect.objectContaining({
+        workspaceId: first.workspace.workspaceId,
+        folders: [expect.objectContaining({ folderId: folder.folder.folderId, title: 'Filed' })],
+      }),
+    })
+
+    const session = ctx.sessions.create(SessionId('filed-session'), {
+      meta: { cwd: first.workspace.path },
+    })
+    const workspace = ctx.workspaceRegistry.get(first.workspace.workspaceId)
+    if (workspace === undefined) throw new Error('fixture Workspace disappeared')
+    await workspace.attachSession(session.id)
+    await expect(nextFrame(iterator)).resolves.toEqual({
+      type: 'upsert',
+      workspace: expect.objectContaining({
+        workspaceId: first.workspace.workspaceId,
+        sessionIds: [session.id],
+        folders: [expect.objectContaining({ sessionIds: [] })],
+      }),
+    })
+
+    await controller.moveSessionToFolder({
+      workspaceId: first.workspace.workspaceId,
+      sessionId: session.id,
+      folderId: folder.folder.folderId,
+    })
+    await expect(nextFrame(iterator)).resolves.toEqual({
+      type: 'upsert',
+      workspace: expect.objectContaining({
+        workspaceId: first.workspace.workspaceId,
+        sessionIds: [session.id],
+        folders: [expect.objectContaining({ sessionIds: [session.id] })],
+      }),
+    })
+
+    await controller.moveSessionToFolder({
+      workspaceId: first.workspace.workspaceId,
+      sessionId: session.id,
+    })
+    await expect(nextFrame(iterator)).resolves.toEqual({
+      type: 'upsert',
+      workspace: expect.objectContaining({
+        workspaceId: first.workspace.workspaceId,
+        sessionIds: [session.id],
+        folders: [expect.objectContaining({ sessionIds: [] })],
+      }),
+    })
+
+    await controller.deleteFolder({
+      workspaceId: first.workspace.workspaceId,
+      folderId: folder.folder.folderId,
+    })
+    await expect(nextFrame(iterator)).resolves.toEqual({
+      type: 'upsert',
+      workspace: expect.objectContaining({
+        workspaceId: first.workspace.workspaceId,
+        sessionIds: [session.id],
+        folders: [],
+      }),
+    })
+
+    abort.abort()
+    await expect(iterator.next()).resolves.toEqual({ done: true, value: undefined })
+  })
+
+  it('streams Group lifecycle layouts without losing members', async () => {
+    const { controller, root } = await harness()
+    const first = await controller.create({ path: stageDir(root, 'first') })
+    const second = await controller.create({ path: stageDir(root, 'second') })
+    const abort = new AbortController()
+    const iterator = controller.follow(abort.signal)[Symbol.asyncIterator]()
+    await nextFrame(iterator)
+
+    const group = await controller.createGroup({ title: 'Team' })
+    await expect(nextFrame(iterator)).resolves.toEqual({
+      type: 'layout',
+      layout: {
+        topLevelWorkspaceIds: [second.workspace.workspaceId, first.workspace.workspaceId],
+        groups: [expect.objectContaining({
+          groupId: group.group.groupId,
+          title: 'Team',
+          workspaceIds: [],
+        })],
+      },
+    })
+
+    await controller.moveToGroup({
+      workspaceId: first.workspace.workspaceId,
+      groupId: group.group.groupId,
+    })
+    await expect(nextFrame(iterator)).resolves.toEqual({
+      type: 'layout',
+      layout: {
+        topLevelWorkspaceIds: [second.workspace.workspaceId],
+        groups: [expect.objectContaining({
+          groupId: group.group.groupId,
+          title: 'Team',
+          workspaceIds: [first.workspace.workspaceId],
+        })],
+      },
+    })
+
+    await controller.renameGroup({ groupId: group.group.groupId, title: 'Renamed' })
+    await expect(nextFrame(iterator)).resolves.toEqual({
+      type: 'layout',
+      layout: {
+        topLevelWorkspaceIds: [second.workspace.workspaceId],
+        groups: [expect.objectContaining({
+          groupId: group.group.groupId,
+          title: 'Renamed',
+          workspaceIds: [first.workspace.workspaceId],
+        })],
+      },
+    })
+
+    await controller.deleteGroup({ groupId: group.group.groupId })
+    await expect(nextFrame(iterator)).resolves.toEqual({
+      type: 'layout',
+      layout: {
+        topLevelWorkspaceIds: [first.workspace.workspaceId, second.workspace.workspaceId],
+        groups: [],
+      },
+    })
+
+    abort.abort()
+    await expect(iterator.next()).resolves.toEqual({ done: true, value: undefined })
   })
 
   it('starts a fresh feed with existing pins and follows their removal', async () => {
@@ -381,7 +551,7 @@ describe('WorkspaceController follow', () => {
     const iterator = controller.follow(abort.signal)[Symbol.asyncIterator]()
     await expect(nextFrame(iterator)).resolves.toEqual({
       type: 'baseline',
-      value: { items: [], archivedSessionIds: [], pinnedSessionIds: [] },
+      value: { items: [], topLevelWorkspaceIds: [], groups: [], archivedSessionIds: [], pinnedSessionIds: [] },
     })
 
     const first = await controller.create({ path: stageDir(root, 'first') })
@@ -389,7 +559,8 @@ describe('WorkspaceController follow', () => {
       type: 'upsert', workspace: { workspaceId: first.workspace.workspaceId },
     })
     await expect(nextFrame(iterator)).resolves.toEqual({
-      type: 'order', workspaceIds: [first.workspace.workspaceId],
+      type: 'layout',
+      layout: { topLevelWorkspaceIds: [first.workspace.workspaceId], groups: [] },
     })
     await controller.rename({ workspaceId: first.workspace.workspaceId, title: 'renamed' })
     await expect(nextFrame(iterator)).resolves.toMatchObject({
@@ -401,15 +572,22 @@ describe('WorkspaceController follow', () => {
       type: 'upsert', workspace: { workspaceId: second.workspace.workspaceId },
     })
     await expect(nextFrame(iterator)).resolves.toEqual({
-      type: 'order', workspaceIds: [second.workspace.workspaceId, first.workspace.workspaceId],
+      type: 'layout',
+      layout: {
+        topLevelWorkspaceIds: [second.workspace.workspaceId, first.workspace.workspaceId],
+        groups: [],
+      },
     })
     await controller.insertBefore({
       workspaceId: first.workspace.workspaceId,
       beforeWorkspaceId: second.workspace.workspaceId,
     })
     await expect(nextFrame(iterator)).resolves.toEqual({
-      type: 'order',
-      workspaceIds: [first.workspace.workspaceId, second.workspace.workspaceId],
+      type: 'layout',
+      layout: {
+        topLevelWorkspaceIds: [first.workspace.workspaceId, second.workspace.workspaceId],
+        groups: [],
+      },
     })
 
     const session = ctx.sessions.create(SessionId('archived'), {
@@ -435,10 +613,11 @@ describe('WorkspaceController follow', () => {
     })
     await controller.delete({ workspaceId: second.workspace.workspaceId })
     await expect(nextFrame(iterator)).resolves.toEqual({
-      type: 'order', workspaceIds: [first.workspace.workspaceId],
+      type: 'remove', workspaceId: second.workspace.workspaceId,
     })
     await expect(nextFrame(iterator)).resolves.toEqual({
-      type: 'remove', workspaceId: second.workspace.workspaceId,
+      type: 'layout',
+      layout: { topLevelWorkspaceIds: [first.workspace.workspaceId], groups: [] },
     })
 
     abort.abort()
@@ -475,6 +654,8 @@ describe('WorkspaceController follow', () => {
       type: 'baseline',
       value: {
         items: [expect.objectContaining({ workspaceId: shownId, sessionIds: [shared.id] })],
+        topLevelWorkspaceIds: [shownId],
+        groups: [],
         archivedSessionIds: [],
         pinnedSessionIds: [shared.id],
       },
@@ -571,7 +752,10 @@ describe('WorkspaceController follow', () => {
     await expect(pending).resolves.toMatchObject({ value: { type: 'upsert' } })
     await expect(iterator.next()).resolves.toEqual({
       done: false,
-      value: { type: 'order', workspaceIds: [created.workspace.workspaceId] },
+      value: {
+        type: 'layout',
+        layout: { topLevelWorkspaceIds: [created.workspace.workspaceId], groups: [] },
+      },
     })
 
     const closing = iterator.next()

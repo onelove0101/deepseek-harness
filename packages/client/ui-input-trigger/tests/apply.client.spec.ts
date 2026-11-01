@@ -58,6 +58,7 @@ describe('apply', () => {
     locale.setLocale('en')
     expect(t('skill')).toBe('Skills')
     expect(t('subagent')).toBe('Subagents')
+    expect(t('expert')).toBe('Experts')
     expect(t('loading')).toBe('Loading…')
   })
 
@@ -86,9 +87,14 @@ describe('apply', () => {
     )
     expect(injected.menu).toBe(controller.menu)
     expect(injected.headers).toBe(controller.headers)
+    expect(injected.flyout).toBe(controller.flyout)
     // The pick face routes into the controller pipeline (closed menu → no-op).
     injected.onPick('command', 0)
     expect(controller.menu.getSnapshot().open).toBe(false)
+    // The flyout faces route into the controller too (nothing open → no-ops).
+    injected.onFlyoutPick(0)
+    injected.onFlyoutHover(0)
+    expect(controller.flyout.getSnapshot()).toBeNull()
     // The crumb face routes into the controller too (closed menu → no-op).
     injected.onCrumb('command', 0)
     expect(controller.menu.getSnapshot().open).toBe(false)

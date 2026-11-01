@@ -18,7 +18,7 @@ import {
   WorkspaceCreateError,
   type WorkspaceFollowSink,
 } from '../src/client/index.ts'
-import type { WorkspaceFollowFrame, WorkspaceId } from '../src/types.ts'
+import { FolderId, GroupId, type WorkspaceFollowFrame, type WorkspaceId } from '../src/types.ts'
 import { FOLLOW, baseline, err, followGenerations, workspace, workspaceWorld } from './remote/workspace.client.ts'
 
 const SELF = '@deepseek-ai/dsh-api-workspace-controller'
@@ -57,7 +57,7 @@ function accepts(overrides: Partial<WorkspaceFollowSink> = {}): WorkspaceFollowS
     replaceBaseline: ignore,
     upsertView: ignore,
     removeView: ignore,
-    replaceOrder: ignore,
+    replaceLayout: ignore,
     replaceArchived: ignore,
     replacePinned: ignore,
     ...overrides,
@@ -153,7 +153,7 @@ describe('Workspace state stream', () => {
     const increments: WorkspaceFollowFrame[] = [
       { type: 'upsert', workspace: view },
       { type: 'remove', workspaceId: view.workspaceId },
-      { type: 'order', workspaceIds: [view.workspaceId] },
+      { type: 'layout', layout: { topLevelWorkspaceIds: [view.workspaceId], groups: [] } },
       { type: 'archived', archivedSessionIds: [sid('session-one')] },
       { type: 'pinned', pinnedSessionIds: [sid('session-two')] },
     ]
@@ -161,11 +161,11 @@ describe('Workspace state stream', () => {
     const replaceBaseline = vi.fn<WorkspaceFollowSink['replaceBaseline']>()
     const upsertView = vi.fn<WorkspaceFollowSink['upsertView']>()
     const removeView = vi.fn<WorkspaceFollowSink['removeView']>()
-    const replaceOrder = vi.fn<WorkspaceFollowSink['replaceOrder']>()
+    const replaceLayout = vi.fn<WorkspaceFollowSink['replaceLayout']>()
     const replaceArchived = vi.fn<WorkspaceFollowSink['replaceArchived']>()
     const replacePinned = vi.fn<WorkspaceFollowSink['replacePinned']>()
     const stream = createWorkspaceStateStream(remote, {
-      accept: accepts({ replaceBaseline, upsertView, removeView, replaceOrder, replaceArchived, replacePinned }),
+      accept: accepts({ replaceBaseline, upsertView, removeView, replaceLayout, replaceArchived, replacePinned }),
       failed: vi.fn(),
     })
 
@@ -176,7 +176,7 @@ describe('Workspace state stream', () => {
     expect(replaceBaseline).toHaveBeenCalledWith(opening.value)
     expect(upsertView).toHaveBeenCalledWith(view)
     expect(removeView).toHaveBeenCalledWith(view.workspaceId)
-    expect(replaceOrder).toHaveBeenCalledWith([view.workspaceId])
+    expect(replaceLayout).toHaveBeenCalledWith({ topLevelWorkspaceIds: [view.workspaceId], groups: [] })
     expect(replaceArchived).toHaveBeenCalledWith(['session-one'])
     expect(replacePinned).toHaveBeenCalledWith(['session-two'])
     await stream.dispose()
@@ -346,7 +346,13 @@ describe('WorkspaceController', () => {
   it('returns no Workspace when startup is ineligible without changing the list', async ({ mock, start }) => {
     const { remote, client } = await gatewayClient(mock, start)
     const model = new ClientWorkspaceModel(remote.workspace)
-    model.replaceBaseline({ items: [], archivedSessionIds: [], pinnedSessionIds: [] })
+    model.replaceBaseline({
+      items: [],
+      topLevelWorkspaceIds: [],
+      groups: [],
+      archivedSessionIds: [],
+      pinnedSessionIds: [],
+    })
     const controller = new WorkspaceController(client.ctx, model)
     const before = model.getSnapshot()
     mock.remote.workspace.initializeDefault.mockResolvedValueOnce({ ok: true, value: undefined })
@@ -357,7 +363,13 @@ describe('WorkspaceController', () => {
   it('publishes the model source and exposes successful Workspace commands', async ({ mock, start }) => {
     const { remote, client } = await gatewayClient(mock, start)
     const model = new ClientWorkspaceModel(remote.workspace)
-    model.replaceBaseline({ items: [workspace('one')], archivedSessionIds: [], pinnedSessionIds: [] })
+    model.replaceBaseline({
+      items: [workspace('one')],
+      topLevelWorkspaceIds: [wid('one')],
+      groups: [],
+      archivedSessionIds: [],
+      pinnedSessionIds: [],
+    })
     const controller = new WorkspaceController(client.ctx, model)
 
     expect(controller.list).toBe(model)
@@ -373,6 +385,21 @@ describe('WorkspaceController', () => {
     await expect(controller.unarchiveSession(sid('session'))).resolves.toBeUndefined()
     await expect(controller.pinSession(sid('session'))).resolves.toBeUndefined()
     await expect(controller.unpinSession(sid('session'))).resolves.toBeUndefined()
+    await expect(controller.createGroup('Group')).resolves.toMatchObject({ title: 'Group' })
+    await expect(controller.renameGroup('group' as GroupId, 'Renamed Group')).resolves.toMatchObject({
+      title: 'Renamed Group',
+    })
+    await expect(controller.moveToGroup(wid('one'), 'group' as GroupId)).resolves.toBeUndefined()
+    await expect(controller.deleteGroup('group' as GroupId)).resolves.toBeUndefined()
+    await expect(controller.createFolder(wid('one'), 'Folder')).resolves.toMatchObject({ title: 'Folder' })
+    await expect(controller.renameFolder(wid('one'), 'folder' as FolderId, 'Renamed Folder')).resolves.toMatchObject({
+      folders: [expect.objectContaining({ title: 'Renamed Folder' })],
+    })
+    await expect(controller.moveSessionToFolder(wid('one'), sid('session'), 'folder' as FolderId))
+      .resolves.toMatchObject({ sessionIds: ['session'] })
+    await expect(controller.deleteFolder(wid('one'), 'folder' as FolderId)).resolves.toMatchObject({
+      workspaceId: 'one',
+    })
     await expect(controller.delete(wid('one'))).resolves.toBeUndefined()
     // Each command crosses the wire as one positional request object.
     expect(mock.log.requests('workspace/create')).toEqual([{ path: '/work/created' }])
@@ -384,6 +411,18 @@ describe('WorkspaceController', () => {
     expect(mock.log.requests('workspace/unarchiveSession')).toEqual([{ sessionId: 'session' }])
     expect(mock.log.requests('workspace/pinSession')).toEqual([{ sessionId: 'session' }])
     expect(mock.log.requests('workspace/unpinSession')).toEqual([{ sessionId: 'session' }])
+    expect(mock.log.requests('workspace/createGroup')).toEqual([{ title: 'Group' }])
+    expect(mock.log.requests('workspace/renameGroup')).toEqual([{ groupId: 'group', title: 'Renamed Group' }])
+    expect(mock.log.requests('workspace/moveToGroup')).toEqual([{ workspaceId: 'one', groupId: 'group' }])
+    expect(mock.log.requests('workspace/deleteGroup')).toEqual([{ groupId: 'group' }])
+    expect(mock.log.requests('workspace/createFolder')).toEqual([{ workspaceId: 'one', title: 'Folder' }])
+    expect(mock.log.requests('workspace/renameFolder')).toEqual([{
+      workspaceId: 'one', folderId: 'folder', title: 'Renamed Folder',
+    }])
+    expect(mock.log.requests('workspace/moveSessionToFolder')).toEqual([{
+      workspaceId: 'one', sessionId: 'session', folderId: 'folder',
+    }])
+    expect(mock.log.requests('workspace/deleteFolder')).toEqual([{ workspaceId: 'one', folderId: 'folder' }])
     expect(mock.log.requests('workspace/delete')).toEqual([{ workspaceId: 'one' }])
   })
 
@@ -435,6 +474,42 @@ describe('WorkspaceController', () => {
     )))
     await expect(controller.insertSessionBefore(wid('missing'), sid('session')))
       .rejects.toThrow('workspace move failed: workspace/move-invalid: invalid move')
+
+    const missingGroup = new RemoteError('workspace/group-not-found', 'missing group', { groupId: 'group' as GroupId })
+    mock.remote.workspace.createGroup.mockResolvedValueOnce(err(new RemoteError(
+      'workspace/group-name-conflict', 'duplicate group', { title: 'Group' },
+    )))
+    await expect(controller.createGroup('Group'))
+      .rejects.toThrow('workspace group create failed: workspace/group-name-conflict: duplicate group')
+    mock.remote.workspace.renameGroup.mockResolvedValueOnce(err(missingGroup))
+    await expect(controller.renameGroup('group' as GroupId, 'Group'))
+      .rejects.toThrow('workspace group rename failed: workspace/group-not-found: missing group')
+    mock.remote.workspace.moveToGroup.mockResolvedValueOnce(err(missingGroup))
+    await expect(controller.moveToGroup(wid('missing'), 'group' as GroupId))
+      .rejects.toThrow('workspace group move failed: workspace/group-not-found: missing group')
+    mock.remote.workspace.deleteGroup.mockResolvedValueOnce(err(missingGroup))
+    await expect(controller.deleteGroup('group' as GroupId))
+      .rejects.toThrow('workspace group delete failed: workspace/group-not-found: missing group')
+
+    const missingFolder = new RemoteError('workspace/folder-not-found', 'missing folder', {
+      workspaceId: wid('missing'), folderId: 'folder' as FolderId,
+    })
+    mock.remote.workspace.createFolder.mockResolvedValueOnce(err(new RemoteError(
+      'workspace/folder-name-conflict', 'duplicate folder', { workspaceId: wid('missing'), title: 'Folder' },
+    )))
+    await expect(controller.createFolder(wid('missing'), 'Folder'))
+      .rejects.toThrow('workspace folder create failed: workspace/folder-name-conflict: duplicate folder')
+    mock.remote.workspace.renameFolder.mockResolvedValueOnce(err(missingFolder))
+    await expect(controller.renameFolder(wid('missing'), 'folder' as FolderId, 'Folder'))
+      .rejects.toThrow('workspace folder rename failed: workspace/folder-not-found: missing folder')
+    mock.remote.workspace.deleteFolder.mockResolvedValueOnce(err(missingFolder))
+    await expect(controller.deleteFolder(wid('missing'), 'folder' as FolderId))
+      .rejects.toThrow('workspace folder delete failed: workspace/folder-not-found: missing folder')
+    mock.remote.workspace.moveSessionToFolder.mockResolvedValueOnce(err(new RemoteError(
+      'workspace/folder-move-invalid', 'invalid folder move', { workspaceId: wid('missing'), sessionId: sid('session') },
+    )))
+    await expect(controller.moveSessionToFolder(wid('missing'), sid('session'), 'folder' as FolderId))
+      .rejects.toThrow('workspace folder move failed: workspace/folder-move-invalid: invalid folder move')
   })
 
   it('receives a carrier throw as the client\'s gateway/internal fold, never as a rejection', async ({ mock, start }) => {

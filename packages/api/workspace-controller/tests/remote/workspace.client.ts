@@ -14,10 +14,21 @@ import type {
   WorkspaceCreateValue,
   WorkspaceDeleteRequest,
   WorkspaceDeleteValue,
+  WorkspaceFolderCreateRequest,
+  WorkspaceFolderDeleteRequest,
+  WorkspaceFolderRenameRequest,
+  WorkspaceFolderValue,
   WorkspaceFollowFrame,
+  WorkspaceGroupCreateRequest,
+  WorkspaceGroupDeleteRequest,
+  WorkspaceGroupRenameRequest,
+  WorkspaceGroupValue,
   WorkspaceId,
   WorkspaceInsertBeforeRequest,
   WorkspaceInsertSessionBeforeRequest,
+  WorkspaceLayoutValue,
+  WorkspaceMoveSessionToFolderRequest,
+  WorkspaceMoveToGroupRequest,
   WorkspaceOrderValue,
   WorkspacePinSessionRequest,
   WorkspacePinValue,
@@ -55,6 +66,41 @@ export function workspace(id: string, overrides: Partial<WorkspaceView> = {}): W
     path: `/work/${id}`,
     title: id,
     sessionIds: [],
+    folders: [],
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  }
+}
+
+/**
+ * One Workspace Group whose id doubles as its title.
+ * @param id - Group id.
+ * @param overrides - fields replacing the derived ones.
+ * @returns the Group projection.
+ */
+export function group(id: string, overrides: Partial<WorkspaceGroupValue['group']> = {}): WorkspaceGroupValue['group'] {
+  return {
+    groupId: id as WorkspaceGroupValue['group']['groupId'],
+    title: id,
+    workspaceIds: [],
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  }
+}
+
+/**
+ * One logical Session Folder whose id doubles as its title.
+ * @param id - Folder id.
+ * @param overrides - fields replacing the derived ones.
+ * @returns the Folder projection.
+ */
+export function folder(id: string, overrides: Partial<WorkspaceFolderValue['folder']> = {}): WorkspaceFolderValue['folder'] {
+  return {
+    folderId: id as WorkspaceFolderValue['folder']['folderId'],
+    title: id,
+    sessionIds: [],
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
@@ -69,7 +115,13 @@ export function workspace(id: string, overrides: Partial<WorkspaceView> = {}): W
 export function baseline(...ids: readonly string[]): WorkspaceBaselineFrame {
   return {
     type: 'baseline',
-    value: { items: ids.map(id => workspace(id)), archivedSessionIds: [], pinnedSessionIds: [] },
+    value: {
+      items: ids.map(id => workspace(id)),
+      topLevelWorkspaceIds: ids as readonly WorkspaceId[],
+      groups: [],
+      archivedSessionIds: [],
+      pinnedSessionIds: [],
+    },
   }
 }
 
@@ -107,5 +159,43 @@ export const workspaceWorld: RemoteTable = {
     'workspace/unarchiveSession': (_request: WorkspaceUnarchiveSessionRequest): RemoteResult<WorkspaceArchiveValue> => ok({ archivedSessionIds: [] }),
     'workspace/pinSession': (request: WorkspacePinSessionRequest): RemoteResult<WorkspacePinValue> => ok({ pinnedSessionIds: [request.sessionId] }),
     'workspace/unpinSession': (_request: WorkspaceUnpinSessionRequest): RemoteResult<WorkspacePinValue> => ok({ pinnedSessionIds: [] }),
+    'workspace/createGroup': (request: WorkspaceGroupCreateRequest): RemoteResult<WorkspaceGroupValue> => {
+      const created = group('group', { title: request.title })
+      return ok({
+        group: created,
+        layout: { topLevelWorkspaceIds: [], groups: [created] },
+      })
+    },
+    'workspace/renameGroup': (request: WorkspaceGroupRenameRequest): RemoteResult<WorkspaceGroupValue> => ok({
+      group: group(String(request.groupId), { title: request.title }),
+      layout: { topLevelWorkspaceIds: [], groups: [group(String(request.groupId), { title: request.title })] },
+    }),
+    'workspace/deleteGroup': (_request: WorkspaceGroupDeleteRequest): RemoteResult<WorkspaceLayoutValue> => ok({
+      layout: { topLevelWorkspaceIds: [], groups: [] },
+    }),
+    'workspace/moveToGroup': (_request: WorkspaceMoveToGroupRequest): RemoteResult<WorkspaceLayoutValue> => ok({
+      layout: { topLevelWorkspaceIds: [], groups: [] },
+    }),
+    'workspace/createFolder': (request: WorkspaceFolderCreateRequest): RemoteResult<WorkspaceFolderValue> => ok({
+      folder: {
+        folderId: 'folder' as WorkspaceFolderValue['folder']['folderId'],
+        title: request.title,
+        sessionIds: [],
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+      workspace: workspace(String(request.workspaceId)),
+    }),
+    'workspace/renameFolder': (request: WorkspaceFolderRenameRequest): RemoteResult<WorkspaceValue> => ok({
+      workspace: workspace(String(request.workspaceId), {
+        folders: [folder(String(request.folderId), { title: request.title })],
+      }),
+    }),
+    'workspace/deleteFolder': (request: WorkspaceFolderDeleteRequest): RemoteResult<WorkspaceValue> => ok({
+      workspace: workspace(String(request.workspaceId)),
+    }),
+    'workspace/moveSessionToFolder': (request: WorkspaceMoveSessionToFolderRequest): RemoteResult<WorkspaceValue> => ok({
+      workspace: workspace(String(request.workspaceId), { sessionIds: [request.sessionId] }),
+    }),
   },
 }

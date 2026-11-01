@@ -14,21 +14,48 @@ import type { DomainGlobal, KvTable } from '@deepseek-ai/dsh-storage-domain'
 import { WorkspaceEntity } from './entity.ts'
 import type { WorkspaceEntityHost } from './entity.ts'
 
-export { WorkspaceMoveInvalidError } from './entity.ts'
+export { WorkspaceFolderInvalidError, WorkspaceMoveInvalidError } from './entity.ts'
 import { defaultWorkspaceTitle, fullyQualifiedWorkspacePath, realpathNormalize } from './paths.ts'
 import { workspaceDomainSpec } from './spec.ts'
-import type { WorkspaceDomainState, WorkspaceRecord } from './spec.ts'
-import type { SessionActivity, Workspace, WorkspaceId as WorkspaceIdBrand } from './types.ts'
+import type {
+  WorkspaceDomainState,
+  WorkspaceGroupRecord,
+  WorkspacePendingMutation as WorkspacePendingMarker,
+  WorkspaceRecord,
+} from './spec.ts'
+import type {
+  FolderId as FolderIdBrand,
+  GroupId as GroupIdBrand,
+  SessionActivity,
+  Workspace,
+  WorkspaceGroup,
+  WorkspaceId as WorkspaceIdBrand,
+} from './types.ts'
 
 export type {
-  SessionActivity, SessionActivityItem, SessionActivityKind, SessionActivityKindMap, Workspace,
+  SessionActivity, SessionActivityItem, SessionActivityKind, SessionActivityKindMap,
+  Workspace, WorkspaceFolder, WorkspaceGroup,
 } from './types.ts'
-export { workspaceDomainState, workspaceRecord, workspaceDomainSpec } from './spec.ts'
-export type { WorkspaceDomainState, WorkspaceRecord } from './spec.ts'
+export {
+  workspaceDomainState, workspaceFolderRecord, workspaceGroupRecord, workspaceRecord, workspaceDomainSpec,
+} from './spec.ts'
+export type {
+  WorkspaceDomainState,
+  WorkspaceFolderRecord,
+  WorkspaceGroupRecord,
+  WorkspacePendingMutation,
+  WorkspaceRecord,
+} from './spec.ts'
 export { realpathNormalize } from './paths.ts'
 
 /** Identifies one workspace record (see `src/types.ts` for the brand rationale). */
 export type WorkspaceId = WorkspaceIdBrand
+
+/** Identifies one workspace group record (see `src/types.ts`). */
+export type GroupId = GroupIdBrand
+
+/** Identifies one logical Session folder (see `src/types.ts`). */
+export type FolderId = FolderIdBrand
 
 /**
  * Brand a string as a {@link WorkspaceId}.
@@ -37,6 +64,24 @@ export type WorkspaceId = WorkspaceIdBrand
  */
 export function WorkspaceId(id: string): WorkspaceId {
   return id as WorkspaceId
+}
+
+/**
+ * Brand a string as a {@link GroupId}.
+ * @param id - Raw group id string.
+ * @returns the same string, branded at compile time.
+ */
+export function GroupId(id: string): GroupId {
+  return id as GroupId
+}
+
+/**
+ * Brand a string as a {@link FolderId}.
+ * @param id - Raw Folder id string.
+ * @returns the same string, branded at compile time.
+ */
+export function FolderId(id: string): FolderId {
+  return id as FolderId
 }
 
 /**
@@ -90,6 +135,17 @@ export class WorkspaceOrderInvalidError extends Error {
   constructor(readonly workspaceId: WorkspaceId) {
     super(`cannot reorder unknown workspace '${workspaceId}'`)
     this.name = 'WorkspaceOrderInvalidError'
+  }
+}
+
+/** A group operation named a group absent from the durable registry group order. */
+export class WorkspaceGroupUnknownError extends Error {
+  /**
+   * @param groupId - Missing group id.
+   */
+  constructor(readonly groupId: GroupId) {
+    super(`unknown workspace group '${groupId}'`)
+    this.name = 'WorkspaceGroupUnknownError'
   }
 }
 
@@ -154,6 +210,19 @@ interface BootstrapGroup {
   readonly newestAt: number
 }
 
+/**
+ * The registry-internal group view: the public {@link WorkspaceGroup} plus
+ * the snapshot-adopt channel registry-level group writes refresh through, so
+ * an already published view never goes stale.
+ */
+interface RegistryGroup extends WorkspaceGroup {
+  /**
+   * Swap the snapshot after a registry-level durable write.
+   * @param record - The committed record.
+   */
+  adopt(record: WorkspaceGroupRecord): void
+}
+
 const sameIds = (left: readonly WorkspaceId[], right: readonly WorkspaceId[]): boolean =>
   left.length === right.length && left.every((id, index) => id === right[index])
 
@@ -171,9 +240,11 @@ export class WorkspaceRegistry extends Service {
   static inject = ['storageDomain', 'sessionPersistence']
 
   private table?: KvTable<WorkspaceId, WorkspaceRecord>
+  private groupTable?: KvTable<GroupId, WorkspaceGroupRecord>
   private global?: DomainGlobal<WorkspaceDomainState>
   private state?: WorkspaceDomainState
   private readonly entities = new Map<WorkspaceId, WorkspaceEntity>()
+  private readonly groups = new Map<GroupId, RegistryGroup>()
   private readonly headers = new Map<SessionId, SessionHeader>()
   private readonly sessionPaths = new Map<SessionId, string>()
   private readonly missingSessionPaths = new Set<SessionId>()
@@ -200,6 +271,7 @@ export class WorkspaceRegistry extends Service {
     const domain = await this.ctx.storageDomain.open(workspaceDomainSpec)
     this.ctx.effect(() => () => domain.close(), 'workspace.domainClose')
     this.table = domain.table('workspaces')
+    this.groupTable = domain.table('groups')
     this.global = domain.global
     this.state = domain.global.get()
 
@@ -332,6 +404,202 @@ export class WorkspaceRegistry extends Service {
       if (sameIds(workspaceIds, state.workspaceIds)) return state.workspaceIds
       await this.setState({ ...state, workspaceIds })
       return workspaceIds
+    })
+  }
+
+  /**
+   * Create a workspace group folder. The new group is prepended to the
+   * durable group display order. Group titles are not unique at this layer;
+   * the Remote command surface enforces the title-uniqueness policy.
+   * @param title - Display title.
+   * @returns the newly durable group.
+   */
+  async createGroup(title: string): Promise<WorkspaceGroup> {
+    return await this.enqueueOperation(async () => {
+      const groupTable = this.requireGroupTable()
+      const state = this.requireState()
+      const id = GroupId(randomUUID())
+      const now = new Date().toISOString()
+      const record: WorkspaceGroupRecord = { title, workspaceIds: [], createdAt: now, updatedAt: now }
+      const pendingState: WorkspaceDomainState = {
+        ...state,
+        pendingMutation: { operation: 'group-create', groupId: id },
+      }
+      try {
+        await this.setState(pendingState)
+      } catch (error) {
+        throw error
+      }
+      try {
+        await groupTable.put(id, record)
+      } catch (error) {
+        try {
+          await this.setState(state)
+        } catch (rollbackError) {
+          throw new AggregateError(
+            [error, rollbackError],
+            `workspace group '${id}' record write and pending-marker rollback both failed`,
+          )
+        }
+        throw error
+      }
+      try {
+        await this.setState({ ...state, groupIds: [id, ...state.groupIds] })
+      } catch (error) {
+        try {
+          await groupTable.delete(id)
+        } catch (rollbackError) {
+          throw new AggregateError(
+            [error, rollbackError],
+            `workspace group '${id}' order write and record rollback both failed; the pending marker remains recoverable`,
+          )
+        }
+        try {
+          await this.setState(state)
+        } catch (rollbackError) {
+          throw new AggregateError(
+            [error, rollbackError],
+            `workspace group '${id}' order write and pending-marker rollback both failed`,
+          )
+        }
+        throw error
+      }
+      const view = this.groupView(id, record)
+      this.groups.set(id, view)
+      return view
+    })
+  }
+
+  /**
+   * Look up a group by id.
+   * @param id - Group id.
+   * @returns the group, or `undefined` when unknown.
+   */
+  getGroup(id: GroupId): WorkspaceGroup | undefined {
+    return this.groups.get(id)
+  }
+
+  /**
+   * Synchronous group projection in durable group display order.
+   * @returns a fresh ordered array of group views.
+   */
+  listGroups(): WorkspaceGroup[] {
+    return this.requireState().groupIds.map((id) => {
+      const group = this.groups.get(id)
+      if (group === undefined) {
+        throw new Error(`workspace registry group order references missing group '${id}'`)
+      }
+      return group
+    })
+  }
+
+  /**
+   * Delete one group while retaining every filed workspace registration: the
+   * members are filed back to the top level at the head of the workspace
+   * order (preserving their in-group order) before the group record drops,
+   * so no workspace is ever lost with its folder. Unknown ids reject.
+   * @param id - Group to remove.
+   * @returns resolution after durability.
+   */
+  deleteGroup(id: GroupId): Promise<void> {
+    return this.enqueueOperation(async () => {
+      const state = this.requireState()
+      if (!state.groupIds.includes(id)) throw new WorkspaceGroupUnknownError(id)
+      const record = this.requireGroupTable().get(id) as WorkspaceGroupRecord
+      const nextState: WorkspaceDomainState = {
+        ...state,
+        workspaceIds: [...record.workspaceIds, ...state.workspaceIds],
+        groupIds: state.groupIds.filter(groupId => groupId !== id),
+      }
+      await this.setState({ ...nextState, pendingMutation: { operation: 'group-delete', groupId: id } })
+      this.groups.delete(id)
+      try {
+        await this.requireGroupTable().delete(id)
+      } catch (error) {
+        this.groups.set(id, this.groupView(id, record))
+        try {
+          await this.setState(state)
+        } catch (rollbackError) {
+          // The durable marker still says to finish deletion, so the cache must
+          // agree with that recoverable direction rather than republish a row
+          // absent from the persisted order.
+          this.groups.delete(id)
+          throw new AggregateError(
+            [error, rollbackError],
+            `workspace group '${id}' record deletion and registry-order rollback both failed`,
+          )
+        }
+        throw error
+      }
+      try {
+        await this.setState(nextState)
+      } catch (error) {
+        this.ctx.logger.error(
+          `workspace group '${id}' was deleted but its pending marker could not be cleared: ${String(error)}`,
+        )
+      }
+    })
+  }
+
+  /**
+   * File one workspace under a group — appended to the group's member order —
+   * or lift it back to the head of the top-level order when `groupId` is
+   * omitted. Filing never touches the workspace's session accounting. An
+   * unknown workspace rejects with {@link WorkspaceOrderInvalidError}; an
+   * unknown target group rejects with {@link WorkspaceGroupUnknownError}; a
+   * move to the current slot resolves without writing. The transfer crosses
+   * two durable slots, so it runs inside a `group-move` marker window that
+   * startup recovery completes forward.
+   * @param workspaceId - Workspace to file.
+   * @param groupId - Target group; omitted files top-level.
+   * @returns resolution after durability.
+   */
+  moveToGroup(workspaceId: WorkspaceId, groupId?: GroupId): Promise<void> {
+    return this.enqueueOperation(async () => {
+      const state = this.requireState()
+      if (!this.entities.has(workspaceId)) throw new WorkspaceOrderInvalidError(workspaceId)
+      const owner = this.groupOwner(workspaceId)
+      const target: GroupId | '' = groupId ?? ''
+      if (groupId !== undefined && !state.groupIds.includes(groupId)) {
+        throw new WorkspaceGroupUnknownError(groupId)
+      }
+      if ((owner?.id ?? '') === target) return
+
+      const sourceRecord = owner?.record.workspaceIds ?? state.workspaceIds
+      const targetRecord = groupId === undefined ? state.workspaceIds : this.groupRecord(groupId).workspaceIds
+      const from = sourceRecord.filter(id => id !== workspaceId)
+      const to = target === '' ? [workspaceId, ...targetRecord] : [...targetRecord, workspaceId]
+      await this.setState({
+        ...state,
+        pendingMutation: {
+          operation: 'group-move',
+          workspaceId,
+          source: owner?.id ?? '',
+          target,
+          from,
+          to,
+        },
+      })
+      try {
+        await this.fileWorkspace(owner?.id ?? '', from)
+        await this.fileWorkspace(target, to)
+        await this.clearPendingMutation()
+      } catch (error) {
+        try {
+          // Undo whichever slot writes landed before dropping the marker, so a
+          // fully rolled-back transfer leaves no durable trace; a failed undo
+          // keeps the marker and recovery completes the transfer forward.
+          await this.fileWorkspace(owner?.id ?? '', sourceRecord)
+          await this.fileWorkspace(target, targetRecord)
+          await this.setState(state)
+        } catch (rollbackError) {
+          throw new AggregateError(
+            [error, rollbackError],
+            `workspace '${workspaceId}' group transfer and rollback both failed; the pending marker remains recoverable`,
+          )
+        }
+        throw error
+      }
     })
   }
 
@@ -556,6 +824,7 @@ export class WorkspaceRegistry extends Service {
       path: canonical,
       title: workspaceName,
       sessionIds: [],
+      folders: [],
       createdAt: now,
       updatedAt: now,
     }
@@ -633,6 +902,10 @@ export class WorkspaceRegistry extends Service {
     })
     this.entities.delete(id)
     try {
+      // The scrub runs inside the marker window: a crash between the group
+      // writes and the record delete leaves the marker for recovery to finish
+      // both, and every intermediate state stays one the medium may hold.
+      await this.scrubGroupMembership(id)
       await this.requireTable().delete(id)
     } catch (error) {
       this.entities.set(id, entity)
@@ -656,7 +929,7 @@ export class WorkspaceRegistry extends Service {
       // The deletion committed at the table write and was already published
       // to Host streams. Keep the durable marker for startup recovery rather
       // than reporting failure after the requested state became true.
-      this.ctx.logger.warn(
+      this.ctx.logger.error(
         `workspace '${id}' was deleted but its pending marker could not be cleared: ${String(error)}`,
       )
     }
@@ -664,21 +937,136 @@ export class WorkspaceRegistry extends Service {
   }
 
   /**
-   * Complete the one mutation explicitly named by durable state. Unexplained
-   * order/table divergence still reaches {@link validateStoredState} and
-   * fails loud; this path never guesses which operation created a row from its shape alone.
+   * Complete the one mutation explicitly named by durable state. Create,
+   * delete, group-create, and group-delete markers recover by dropping the
+   * named row — the id must already be absent from its order array — and a
+   * workspace delete also finishes the group-membership scrub. A `group-move`
+   * marker completes forward: the recorded source and target member arrays
+   * are rewritten to their post-transfer contents, with the moved id sitting
+   * in the source slot, in the target slot, or in neither (the crash windows
+   * between the slot writes). Unexplained divergence beyond the marker still
+   * reaches {@link validateStoredState} and fails loud.
    */
   private async recoverPendingMutation(): Promise<void> {
     const state = this.requireState()
     const pending = state.pendingMutation
     if (pending === undefined) return
-    if (state.workspaceIds.includes(pending.workspaceId)) {
-      throw new Error(
-        `workspace domain is inconsistent: pending ${pending.operation} workspace `
-        + `'${pending.workspaceId}' is still present in registry order`,
-      )
+    const marker: WorkspacePendingMarker = pending
+    switch (marker.operation) {
+      case 'create':
+      case 'delete': {
+        if (state.workspaceIds.includes(marker.workspaceId)) {
+          throw new Error(
+            `workspace domain is inconsistent: pending ${marker.operation} workspace `
+            + `'${marker.workspaceId}' is still present in registry order`,
+          )
+        }
+        if (marker.operation === 'delete') await this.scrubGroupMembership(marker.workspaceId)
+        await this.requireTable().delete(marker.workspaceId)
+        break
+      }
+      case 'group-create':
+      case 'group-delete': {
+        if (state.groupIds.includes(marker.groupId)) {
+          throw new Error(
+            `workspace domain is inconsistent: pending ${marker.operation} group `
+            + `'${marker.groupId}' is still present in registry group order`,
+          )
+        }
+        await this.requireGroupTable().delete(marker.groupId)
+        break
+      }
+      case 'group-move': {
+        const owner = this.groupOwner(marker.workspaceId)
+        const slot: GroupId | '' | undefined = owner === undefined
+          ? (state.workspaceIds.includes(marker.workspaceId) ? '' : undefined)
+          : owner.id
+        // Legitimate crash points: the id still sits in the source slot (no
+        // slot write landed), sits nowhere (only the source write landed), or
+        // already sits in the target slot (the marker clear failed after both
+        // writes landed). Sitting anywhere else is unexplained divergence.
+        if (slot !== undefined && slot !== marker.source && slot !== marker.target) {
+          throw new Error(
+            'workspace domain is inconsistent: pending group-move workspace '
+            + `'${marker.workspaceId}' sits outside its recorded transfer slots`,
+          )
+        }
+        await this.fileWorkspace(marker.source, marker.from)
+        await this.fileWorkspace(marker.target, marker.to)
+        break
+      }
+      /* v8 ignore next 2 -- closed-union backstop after the zod-validated durable boundary */
+      default:
+        assertNever(marker)
     }
-    await this.requireTable().delete(pending.workspaceId)
+    await this.clearPendingMutation()
+  }
+
+  /**
+   * Commit one filing slot durably: a group's member array, or the top-level
+   * workspace order when `slot` is the empty string. An unchanged slot
+   * resolves without writing; group writes swap the live view's snapshot.
+   */
+  private async fileWorkspace(slot: GroupId | '', memberIds: readonly WorkspaceId[]): Promise<void> {
+    if (slot === '') {
+      const state = this.requireState()
+      if (sameIds(memberIds, state.workspaceIds)) return
+      await this.setState({ ...state, workspaceIds: [...memberIds] })
+      return
+    }
+    const record = this.groupRecord(slot)
+    if (sameIds(memberIds, record.workspaceIds)) return
+    const next = await this.requireGroupTable().update(slot, current => ({
+      ...current,
+      workspaceIds: [...memberIds],
+      updatedAt: new Date().toISOString(),
+    }))
+    this.groups.get(slot)?.adopt(next)
+  }
+
+  /**
+   * Remove one workspace from every group record still filing it, swapping
+   * the live views. Filing is exclusive by validation, but the scrub does not
+   * assume it: an interrupted filing transfer can leave the id in two member
+   * arrays, and the recovery re-running this scrub must finish both.
+   */
+  private async scrubGroupMembership(workspaceId: WorkspaceId): Promise<void> {
+    const groupTable = this.requireGroupTable()
+    for (const [id, record] of groupTable.entries()) {
+      if (!record.workspaceIds.includes(workspaceId)) continue
+      const next = await groupTable.update(id, current => ({
+        ...current,
+        workspaceIds: current.workspaceIds.filter(member => member !== workspaceId),
+        updatedAt: new Date().toISOString(),
+      }))
+      this.groups.get(id)?.adopt(next)
+    }
+  }
+
+  /** Locate the group currently filing one workspace, when any. */
+  private groupOwner(workspaceId: WorkspaceId): { id: GroupId; record: WorkspaceGroupRecord } | undefined {
+    for (const id of this.requireState().groupIds) {
+      const record = this.groupRecord(id)
+      if (record.workspaceIds.includes(workspaceId)) return { id, record }
+    }
+    return undefined
+  }
+
+  /**
+   * Read one group record. Callers validate order membership first, so a
+   * miss here means the medium diverged from the validated order.
+   */
+  private groupRecord(id: GroupId): WorkspaceGroupRecord {
+    const record = this.requireGroupTable().get(id)
+    if (record === undefined) {
+      throw new Error(`workspace domain is inconsistent: missing group record '${id}'`)
+    }
+    return record
+  }
+
+  /** Commit the state's non-marker fields, dropping `pendingMutation`. */
+  private async clearPendingMutation(): Promise<void> {
+    const state = this.requireState()
     await this.setState({ ...state, pendingMutation: undefined })
   }
 
@@ -720,6 +1108,7 @@ export class WorkspaceRegistry extends Service {
           path: group.path,
           title: defaultWorkspaceTitle(group.path),
           sessionIds,
+          folders: [],
           createdAt,
           updatedAt: createdAt,
         }
@@ -760,12 +1149,15 @@ export class WorkspaceRegistry extends Service {
       })
       .map(([id]) => id)
 
+    // Group state cannot predate bootstrap: group operations exist only on a
+    // started registry, so both slots carry over verbatim.
     if (!sameIds(state.workspaceIds, workspaceIds)) {
       await this.setState({
         initialized: false,
         workspaceIds,
         archivedSessionIds: state.archivedSessionIds,
         pinnedSessionIds: state.pinnedSessionIds,
+        groupIds: state.groupIds,
       })
     }
     await this.setState({
@@ -773,11 +1165,13 @@ export class WorkspaceRegistry extends Service {
       workspaceIds,
       archivedSessionIds: state.archivedSessionIds,
       pinnedSessionIds: state.pinnedSessionIds,
+      groupIds: state.groupIds,
     })
   }
 
   private validateStoredState(state: WorkspaceDomainState): void {
     const table = this.requireTable()
+    const groupTable = this.requireGroupTable()
     const order = new Set<WorkspaceId>()
     for (const id of state.workspaceIds) {
       if (order.has(id)) {
@@ -788,8 +1182,48 @@ export class WorkspaceRegistry extends Service {
       }
       order.add(id)
     }
-    if (state.initialized && order.size !== table.size) {
-      const orphan = [...table.keys()].find(id => !order.has(id))
+
+    const groupOrder = new Set<GroupId>()
+    for (const id of state.groupIds) {
+      if (groupOrder.has(id)) {
+        throw new Error(`workspace domain is inconsistent: registry group order repeats group '${id}'`)
+      }
+      if (groupTable.get(id) === undefined) {
+        throw new Error(`workspace domain is inconsistent: registry group order references missing group '${id}'`)
+      }
+      groupOrder.add(id)
+    }
+    if (state.initialized && groupOrder.size !== groupTable.size) {
+      const orphan = [...groupTable.keys()].find(id => !groupOrder.has(id))
+      throw new Error(
+        `workspace domain is inconsistent: group '${orphan as GroupId}' is absent from registry group order`,
+      )
+    }
+
+    const filed = new Set<WorkspaceId>()
+    for (const [groupId, record] of groupTable.entries()) {
+      for (const workspaceId of record.workspaceIds) {
+        if (table.get(workspaceId) === undefined) {
+          throw new Error(
+            `workspace domain is inconsistent: group '${groupId}' references missing workspace '${workspaceId}'`,
+          )
+        }
+        if (order.has(workspaceId)) {
+          throw new Error(
+            `workspace domain is inconsistent: workspace '${workspaceId}' sits in both `
+            + `registry order and group '${groupId}'`,
+          )
+        }
+        if (filed.has(workspaceId)) {
+          throw new Error(
+            `workspace domain is inconsistent: workspace '${workspaceId}' is filed by two groups`,
+          )
+        }
+        filed.add(workspaceId)
+      }
+    }
+    if (state.initialized && order.size + filed.size !== table.size) {
+      const orphan = [...table.keys()].find(id => !order.has(id) && !filed.has(id))
       throw new Error(
         `workspace domain is inconsistent: workspace '${orphan as WorkspaceId}' is absent from registry order`,
       )
@@ -798,6 +1232,27 @@ export class WorkspaceRegistry extends Service {
     const paths = new Map<string, WorkspaceId>()
     const accounted = new Map<SessionId, WorkspaceId>()
     for (const [id, record] of table.entries()) {
+      const folderIds = new Set<FolderId>()
+      const filedSessionIds = new Set<SessionId>()
+      for (const folder of record.folders) {
+        if (folderIds.has(folder.id)) {
+          throw new Error(`workspace domain is inconsistent: workspace '${id}' repeats folder '${folder.id}'`)
+        }
+        folderIds.add(folder.id)
+        for (const sessionId of folder.sessionIds) {
+          if (!record.sessionIds.includes(sessionId)) {
+            throw new Error(
+              `workspace domain is inconsistent: folder '${folder.id}' references unowned session '${sessionId}'`,
+            )
+          }
+          if (filedSessionIds.has(sessionId)) {
+            throw new Error(
+              `workspace domain is inconsistent: session '${sessionId}' is filed by two folders in workspace '${id}'`,
+            )
+          }
+          filedSessionIds.add(sessionId)
+        }
+      }
       const pathHolder = paths.get(record.path)
       if (pathHolder !== undefined) {
         throw new Error(
@@ -820,10 +1275,69 @@ export class WorkspaceRegistry extends Service {
   }
 
   private rebuildEntities(): void {
+    const table = this.requireTable()
     this.entities.clear()
-    for (const id of this.requireState().workspaceIds) {
-      const record = this.requireTable().get(id) as WorkspaceRecord
+    for (const [id, record] of table.entries()) {
       this.entities.set(id, new WorkspaceEntity(this.host, id, record))
+    }
+    const groupTable = this.requireGroupTable()
+    this.groups.clear()
+    for (const [id, record] of groupTable.entries()) {
+      this.groups.set(id, this.groupView(id, record))
+    }
+  }
+
+  /**
+   * Freeze one group record into the consumer view. The view's getters read a
+   * snapshot swapped through its own write path or through the registry's
+   * `adopt` channel after a registry-level group write (filing, move-out,
+   * membership scrub), so a group is observed atomically like a workspace
+   * entity and an already published view never goes stale.
+   */
+  private groupView(id: GroupId, record: WorkspaceGroupRecord): RegistryGroup {
+    let snapshot = this.groupSnapshot(record)
+    const view: RegistryGroup = {
+      id,
+      get title() {
+        return snapshot.title
+      },
+      get createdAt() {
+        return snapshot.createdAt
+      },
+      get updatedAt() {
+        return snapshot.updatedAt
+      },
+      get workspaceIds() {
+        return snapshot.workspaceIds
+      },
+      adopt: (next: WorkspaceGroupRecord) => {
+        snapshot = this.groupSnapshot(next)
+      },
+      setTitle: async (title: string) => {
+        if (snapshot.title === title) return
+        const next = await this.requireGroupTable().update(id, current => ({
+          ...current,
+          title,
+          updatedAt: new Date().toISOString(),
+        }))
+        snapshot = this.groupSnapshot(next)
+      },
+    }
+    return view
+  }
+
+  /** Freeze the group record's member ids in registry-entity order. */
+  private groupSnapshot(record: WorkspaceGroupRecord): {
+    readonly title: string
+    readonly createdAt: string
+    readonly updatedAt: string
+    readonly workspaceIds: readonly WorkspaceId[]
+  } {
+    return {
+      title: record.title,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+      workspaceIds: Object.freeze(record.workspaceIds.slice()),
     }
   }
 
@@ -886,7 +1400,7 @@ export class WorkspaceRegistry extends Service {
           ?? (this.headers.has(sessionId)
             ? `canonical cwd '${path}' differs from workspace path '${record.path}'`
             : 'session header is missing')
-        this.ctx.logger.warn(
+        this.ctx.logger.error(
           `workspace '${entity.id}' filtered session '${sessionId}' from membership: ${reason}`,
         )
       }
@@ -916,6 +1430,11 @@ export class WorkspaceRegistry extends Service {
     return this.table
   }
 
+  private requireGroupTable(): KvTable<GroupId, WorkspaceGroupRecord> {
+    if (this.groupTable === undefined) throw new Error('workspace registry is not started yet')
+    return this.groupTable
+  }
+
   private requireState(): WorkspaceDomainState {
     if (this.state === undefined) throw new Error('workspace registry is not started yet')
     return this.state
@@ -940,5 +1459,10 @@ export class WorkspaceRegistry extends Service {
 
 const sameSessionIds = (left: readonly SessionId[], right: readonly SessionId[]): boolean =>
   left.length === right.length && left.every((id, index) => id === right[index])
+
+/* v8 ignore next 3 -- closed-union backstop after the zod-validated durable boundary */
+function assertNever(value: never): never {
+  throw new Error(`unreachable workspace pending mutation: ${JSON.stringify(value)}`)
+}
 
 export default WorkspaceRegistry

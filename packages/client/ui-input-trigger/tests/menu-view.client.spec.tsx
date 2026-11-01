@@ -14,7 +14,7 @@ import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import { zh } from '../src/client/locales.ts'
 import type {
-  InputTriggerCrumb, MenuState, TriggerHit,
+  FlyoutState, InputTriggerCrumb, MenuState, TriggerHit,
 } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import { MenuView } from '../src/client/MenuView.tsx'
 
@@ -59,8 +59,15 @@ afterEach(() => {
 // unknown source comes back verbatim (its raw name).
 const t = makeTranslate(zh, commonZh)
 
-function mount(state: MenuState, crumbs: ReadonlyMap<string, readonly InputTriggerCrumb[]> = new Map()) {
+function mount(
+  state: MenuState,
+  crumbs: ReadonlyMap<string, readonly InputTriggerCrumb[]> = new Map(),
+  flyoutState: FlyoutState | null = null,
+) {
   const menu = createSnapshotStore<MenuState>(state)
+  const flyout = createSnapshotStore<FlyoutState | null>(flyoutState)
+  const onFlyoutPick = vi.fn()
+  const onFlyoutHover = vi.fn()
   const headers = createSnapshotStore<ReadonlyMap<string, readonly InputTriggerCrumb[]>>(crumbs)
   const onPick = vi.fn()
   const onCrumb = vi.fn()
@@ -70,14 +77,17 @@ function mount(state: MenuState, crumbs: ReadonlyMap<string, readonly InputTrigg
     <MenuView
       menu={menu}
       headers={headers}
+      flyout={flyout}
       onPick={onPick}
+      onFlyoutPick={onFlyoutPick}
+      onFlyoutHover={onFlyoutHover}
       onCrumb={onCrumb}
       onHover={onHover}
       onDismiss={onDismiss}
       t={t}
     />,
   )
-  return { menu, headers, onPick, onCrumb, onHover, onDismiss, view }
+  return { menu, headers, flyout, onPick, onFlyoutPick, onFlyoutHover, onCrumb, onHover, onDismiss, view }
 }
 
 /** The bounded menu shell: it owns the height clamp, the listbox scrolls inside it. */
@@ -162,6 +172,25 @@ describe('MenuView', () => {
       ],
     }))
     expect(titles(view.container)).toEqual(['指令', 'mystery', '技能'])
+  })
+
+  it('titles the expert source with its localized name', () => {
+    const { view } = mount(openState({
+      groups: [{ source: 'expert', status: 'ready', items: [{ name: 'reviewer' }] }],
+      highlight: null,
+    }))
+    expect(titles(view.container)).toEqual(['专家'])
+  })
+
+  it('shows a source named like another dictionary key as published, not that entry copy', () => {
+    const { view } = mount(openState({
+      groups: [
+        { source: 'loading', status: 'ready', items: [{ name: 'a' }] },
+        { source: 'drill.key', status: 'ready', items: [{ name: 'b' }] },
+      ],
+      highlight: null,
+    }))
+    expect(titles(view.container)).toEqual(['loading', 'drill.key'])
   })
 
   it('renders contiguous candidate sections once without changing option indexes', () => {
@@ -292,7 +321,10 @@ describe('MenuView', () => {
         <MenuView
           menu={menu}
           headers={createSnapshotStore<ReadonlyMap<string, readonly InputTriggerCrumb[]>>(new Map())}
+          flyout={createSnapshotStore<FlyoutState | null>(null)}
           onPick={vi.fn()}
+          onFlyoutPick={vi.fn()}
+          onFlyoutHover={vi.fn()}
           onCrumb={vi.fn()}
           onHover={vi.fn()}
           onDismiss={onDismiss}
@@ -372,5 +404,104 @@ describe('MenuView', () => {
   it('renders no header for a source that published no crumbs', () => {
     mount(openState())
     expect(screen.queryByRole('navigation')).toBeNull()
+  })
+
+  describe('flyout', () => {
+    const submenuState = (): MenuState => openState({
+      groups: [
+        { source: 'command', status: 'ready', items: [{ name: 'expert', label: 'Expert', submenu: true }, { name: 'plan' }] },
+      ],
+    })
+    const readyFlyout = (highlight: number | null = null): FlyoutState => ({
+      source: 'command',
+      parent: 0,
+      parentName: 'expert',
+      status: 'ready',
+      items: [{ name: 'alpha', description: 'first' }, { name: 'beta' }],
+      highlight,
+    })
+
+    it('marks a submenu row with a popup hint and a chevron, and renders nothing while closed', () => {
+      mount(submenuState())
+      const row = screen.getAllByRole('option')[0]!
+      expect(row.getAttribute('aria-haspopup')).toBe('listbox')
+      expect(row.querySelector('svg')).not.toBeNull()
+      expect(screen.getAllByRole('option')[1]!.getAttribute('aria-haspopup')).toBeNull()
+      expect(document.querySelector('[data-trigger-flyout]')).toBeNull()
+    })
+
+    it('lists the flyout rows beside the menu and routes mousedown and mousemove by index', () => {
+      const { onFlyoutPick, onFlyoutHover, onPick } = mount(submenuState(), new Map(), readyFlyout(0))
+      const panel = document.querySelector('[data-trigger-flyout]')!
+      const rows = [...panel.querySelectorAll('[role="option"]')]
+      expect(rows.map(row => row.textContent)).toEqual(['alphafirst', 'beta'])
+      expect(rows.map(row => row.getAttribute('aria-selected'))).toEqual(['true', 'false'])
+      fireEvent.mouseMove(rows[1]!)
+      expect(onFlyoutHover).toHaveBeenCalledWith(1)
+      fireEvent.mouseMove(rows[0]!)
+      expect(onFlyoutHover).toHaveBeenCalledTimes(1)
+      expect(fireEvent.mouseDown(rows[1]!)).toBe(false)
+      expect(onFlyoutPick).toHaveBeenCalledWith(1)
+      expect(onPick).not.toHaveBeenCalled()
+    })
+
+    it('keeps each listbox active descendant inside its own rows', () => {
+      const { flyout } = mount(submenuState(), new Map(), readyFlyout(null))
+      const [main, panel] = screen.getAllByRole('listbox')
+      expect(main!.getAttribute('aria-activedescendant')).toBe('dsh-slash-option-command-0')
+      expect(panel!.getAttribute('aria-activedescendant')).toBeNull()
+      act(() => { flyout.set(readyFlyout(1)) })
+      expect(main!.getAttribute('aria-activedescendant')).toBe('dsh-slash-option-command-0')
+      expect(main!.contains(document.getElementById('dsh-slash-option-command-0'))).toBe(true)
+      expect(panel!.getAttribute('aria-activedescendant')).toBe('dsh-slash-flyout-option-1')
+      expect(panel!.contains(document.getElementById('dsh-slash-flyout-option-1'))).toBe(true)
+      expect(scrollIntoView).toHaveBeenCalled()
+    })
+
+    it('reports the submenu parent as expanded and controlling the flyout only while it is open', () => {
+      const { flyout } = mount(submenuState())
+      const [parent, plain] = screen.getAllByRole('option')
+      expect(parent!.getAttribute('aria-expanded')).toBe('false')
+      expect(parent!.getAttribute('aria-controls')).toBeNull()
+      expect(plain!.getAttribute('aria-expanded')).toBeNull()
+      act(() => { flyout.set(readyFlyout()) })
+      expect(parent!.getAttribute('aria-expanded')).toBe('true')
+      expect(parent!.getAttribute('aria-controls')).toBe(document.querySelector('[data-trigger-flyout]')!.id)
+      expect(plain!.getAttribute('aria-expanded')).toBeNull()
+      act(() => { flyout.set({ ...readyFlyout(), parent: 1 }) })
+      expect(parent!.getAttribute('aria-expanded')).toBe('false')
+    })
+
+    it('shows skeleton rows while loading and an empty notice when there is nothing to choose', () => {
+      const { flyout } = mount(submenuState(), new Map(), { ...readyFlyout(), status: 'pending', items: [] })
+      const panel = document.querySelector('[data-trigger-flyout]')!
+      expect(panel.querySelector('[role="status"]')?.getAttribute('aria-label')).toBe('正在加载…')
+      act(() => { flyout.set({ ...readyFlyout(), items: [] }) })
+      expect(panel.textContent).toBe('暂无可选项')
+    })
+
+    it('announces a localized failure instead of presenting stale flyout options', () => {
+      mount(submenuState(), new Map(), { ...readyFlyout(), status: 'failed', items: [], highlight: null })
+      expect(screen.getByRole('alert').textContent).toBe('无法加载可选项')
+      expect(document.querySelector('[data-trigger-flyout] [role="option"]')).toBeNull()
+    })
+
+    it('opens through the parent row hover while it is active and closed, and not once open', () => {
+      const { onHover, flyout } = mount(submenuState())
+      const row = screen.getAllByRole('option')[0]!
+      expect(row.getAttribute('aria-selected')).toBe('true')
+      fireEvent.mouseMove(row)
+      expect(onHover).toHaveBeenCalledWith('command', 0)
+      onHover.mockClear()
+      act(() => { flyout.set(readyFlyout()) })
+      fireEvent.mouseMove(row)
+      expect(onHover).not.toHaveBeenCalled()
+    })
+
+    it('does not dismiss on a pointerdown inside the flyout', () => {
+      const { onDismiss } = mount(submenuState(), new Map(), readyFlyout())
+      fireEvent.pointerDown(document.querySelector('[data-trigger-flyout] [role="option"]')!)
+      expect(onDismiss).not.toHaveBeenCalled()
+    })
   })
 })

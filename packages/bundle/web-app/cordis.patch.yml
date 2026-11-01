@@ -63,6 +63,21 @@
       config:
         maxNoteBytes: 8192
 
+    # Persistent per-user Experts, their private text-document library, and the
+    # leading `@name` invocation. Every bound is a deployment decision.
+    - id: experts
+      name: '@deepseek-ai/dsh-expert'
+      config:
+        maxExperts: 50
+        maxSoulBytes: 16384
+        maxSkillsPerExpert: 20
+        maxDocuments: 200
+        maxDocumentBytes: 262144
+        maxKnowledgeBases: 50
+        maxDocumentsPerKnowledgeBase: 100
+        maxLibraryBytes: 4194304
+        maxInvocationLibraryBytes: 65536
+
     # Browser Session export: `/export` command plus the shared download dialog.
     - id: session-log-download
       name: '@deepseek-ai/dsh-session-log-export'
@@ -330,6 +345,8 @@
     - id: ui-settings-skills
       name: '@deepseek-ai/dsh-client-ui-settings-skills'
 
+    - id: ui-expert
+      name: '@deepseek-ai/dsh-client-ui-expert'
     - id: ui-conversation
       name: '@deepseek-ai/dsh-client-ui-conversation'
 

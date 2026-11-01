@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This group declares Agent capabilities through ordinary Cordis configuration and manages selection and runtime revisions. The Host shares the Agent loop; each Agent sees the tools, prompts and skills of its selected revision.
+This group declares Agent capabilities through ordinary Cordis configuration and manages selection and runtime revisions. The Host shares the Agent loop; each Agent sees the tools, prompts and skills of its selected revision. `expert` adds per-user Experts invoked by a leading `@name`.
 
 ## Table of Contents
 
@@ -24,6 +24,7 @@ This group declares Agent capabilities through ordinary Cordis configuration and
 |---|---|---|
 | [agent-preset-registry](agent-preset-registry/README.md) | Selection, revision retention and profile editing | `ctx.agentPresets` |
 | [agent-preset](agent-preset/README.md) | Declarative child plugins and metadata | — |
+| [`expert`](expert/README.md) | Persistent per-user Experts invoked by a leading `@name` | `ctx.experts` |
 | [persona](persona/README.md) | Composable Agent persona | — |
 
 <a id="related-documentation"></a>
