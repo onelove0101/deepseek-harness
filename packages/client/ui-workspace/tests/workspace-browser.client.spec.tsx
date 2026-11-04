@@ -160,6 +160,7 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     notifyArchivedNotOpenable: vi.fn(),
     renameWorkspace: vi.fn(async () => {}),
     deleteWorkspace: vi.fn(async () => {}),
+    moveToGroup: vi.fn(async () => {}),
     createGroup: vi.fn(async () => {}),
     renameGroup: vi.fn(async () => {}),
     deleteGroup: vi.fn(async () => {}),
@@ -2738,6 +2739,38 @@ describe('WorkspaceBrowser', () => {
       })
       expect(screen.getAllByRole('treeitem').map(row => row.textContent?.replace(/\d+$/, '')))
         .toEqual(['Empty', 'Research', 'Beta'])
+    })
+
+    it('files a dragged Workspace into the Group it is dropped on, and lifts a member to the top level', async () => {
+      const moveToGroup = vi.fn(async () => {})
+      const insertWorkspaceBefore = vi.fn(async () => {})
+      const b = mount({
+        useWorkspaces: hook(workspaceState([workspace('alpha', [], 'Alpha'), workspace('beta', [], 'Beta'), workspace('gamma', [], 'Gamma')], [], [], {
+          topLevelWorkspaceIds: [wid('alpha'), wid('beta')],
+          groups: [group('g-research', 'Research', ['gamma'])],
+        })),
+        moveToGroup,
+        insertWorkspaceBefore,
+      })
+      // Dropping a top-level Workspace on a Group row files it there.
+      const groupSection = screen.getByText('Research').closest('[class*="groupSection"]') as HTMLElement
+      fireEvent.dragStart(screen.getByText('Alpha').closest('[role="treeitem"]')!, { dataTransfer: dragData() })
+      fireDrag(groupSection, 'dragOver', 5)
+      fireDrag(groupSection, 'drop', 5)
+      expect(moveToGroup).toHaveBeenCalledWith(wid('alpha'), 'g-research')
+      // A member is draggable too: dropping it on a top-level Workspace lifts it out and orders it there.
+      fireEvent.click(screen.getByText('Research'))
+      const member = screen.getByText('Gamma').closest('[role="treeitem"]') as HTMLElement
+      expect(member.getAttribute('draggable')).toBe('true')
+      const target = screen.getByText('Beta').closest('[class*="groupSection"]') as HTMLElement
+      target.getBoundingClientRect = () => ({
+        top: 100, bottom: 134, left: 0, right: 200, width: 200, height: 34, x: 0, y: 100, toJSON: () => ({}),
+      })
+      fireEvent.dragStart(member, { dataTransfer: dragData() })
+      fireDrag(target, 'drop', 105)
+      await waitFor(() => { expect(insertWorkspaceBefore).toHaveBeenCalledWith(wid('gamma'), wid('beta')) })
+      expect(moveToGroup).toHaveBeenLastCalledWith(wid('gamma'), undefined)
+      expect(b.props.moveToGroup).toBe(moveToGroup)
     })
 
     it('renames a Group from its dialog', async () => {

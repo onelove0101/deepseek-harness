@@ -11,13 +11,13 @@
  * session and workspace hover cards are suppressed while a menu is open.
  */
 import { useEffect, useMemo, useRef } from 'react'
-import type { PointerEvent, RefObject } from 'react'
+import type { PointerEvent, ReactNode, RefObject } from 'react'
 import clsx from 'clsx'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   HoverCard, IconArchiveOutlineRegular,
   IconEllipsisOutlineRegular, IconFolderCloseRegular, IconFolderOpenRegular,
-  IconNewChatOutlineRegular, IconPinFillRegular,
+  IconFolderOpenOutlineRegular, IconLayersOutlineRegular, IconNewChatOutlineRegular, IconPinFillRegular,
   IconTriangleRightFillRegular, IconUnarchiveOutlineRegular, relativeTime, StateDot, Tooltip, useRowDragPreview,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ShortcutCatalogEntry } from '@deepseek-ai/dsh-client-shortcuts/client'
@@ -369,6 +369,8 @@ function ProjectRow({
 
 /** Facts shared by the Group and Folder header rows. */
 type OrganizationRowProps = {
+  /** Glyph that tells this row kind apart from Workspace rows. */
+  icon: ReactNode
   title: string
   expanded: boolean
   /** The selected Session lives under this row, so a collapsed row stays highlighted. */
@@ -391,7 +393,7 @@ type OrganizationRowProps = {
 }
 
 function OrganizationRow({
-  title, expanded, containsCurrent, count, canManage, actionsLabel, onToggle, onOpenMenu, menuTarget, menuOpen, rowKey,
+  icon, title, expanded, containsCurrent, count, canManage, actionsLabel, onToggle, onOpenMenu, menuTarget, menuOpen, rowKey,
   useContextMenu,
 }: OrganizationRowProps) {
   const { getTriggerProps } = useContextMenu()
@@ -406,7 +408,7 @@ function OrganizationRow({
       {...getTriggerProps(canManage ? menuTarget : undefined)}
     >
       <span className={clsx(css.slot, css.folder, containsCurrent && !expanded && css.folderActive)}>
-        {expanded ? <IconFolderOpenRegular /> : <IconFolderCloseRegular />}
+        {icon}
       </span>
       <span className={clsx(css.slot, css.chevron)}>
         <IconTriangleRightFillRegular className={clsx(css.arrow, expanded && css.arrowOpen)} />
@@ -453,6 +455,7 @@ export function GroupRowItem({
   const menuOpen = useContextMenuTarget(target => target?.kind === 'workspaceGroup' && target.value.groupId === groupId)
   return (
     <OrganizationRow
+      icon={<IconLayersOutlineRegular />}
       title={title} expanded={expanded} containsCurrent={containsCurrent} count={workspaceCount} canManage={canManage}
       actionsLabel={t('actions.group.aria', { name: title })} onToggle={onToggle}
       onOpenMenu={(point) => { openGroupMenu(groupId, title, point, 'toggle') }}
@@ -488,6 +491,7 @@ export function FolderRowItem({
   const menuOpen = useContextMenuTarget(target => target?.kind === 'workspaceFolder' && target.value.folderId === folderId)
   return (
     <OrganizationRow
+      icon={<IconFolderOpenOutlineRegular />}
       title={title} expanded={expanded} containsCurrent={containsCurrent} count={sessionCount} canManage={canManage}
       actionsLabel={t('actions.folder.aria', { name: title })} onToggle={onToggle}
       onOpenMenu={(point) => { openFolderMenu(workspaceId, folderId, title, point, 'toggle') }}

@@ -653,3 +653,9 @@
     transition: none;
   }
 }
+
+/* A Group that would receive the dragged Workspace. */
+.groupDropTarget {
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-interactive-bg-hover);
+}

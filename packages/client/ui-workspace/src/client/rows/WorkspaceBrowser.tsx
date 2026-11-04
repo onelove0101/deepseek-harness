@@ -29,7 +29,7 @@ import {
 import type {
   SessionListState, SessionSearchResultItem,
 } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { FolderId, WorkspaceGroupView, WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { FolderId, GroupId, WorkspaceGroupView, WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { workspaceDisplayTitle } from '@deepseek-ai/dsh-api-workspace-controller/default-workspace'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
@@ -278,6 +278,8 @@ function sessionDragOrder(
 interface WorkspaceDragState {
   workspaceId: WorkspaceId
   over: { id: WorkspaceId; half: 'before' | 'after' } | null
+  /** Group header or body the pointer is over; dropping files the Workspace there. */
+  overGroup?: GroupId | undefined
 }
 
 /** Resolve an insertion side across the Workspace header, descendants, and Sessions. */
@@ -289,7 +291,7 @@ function workspaceGroupHalf(e: { clientY: number; currentTarget: HTMLElement }):
 type SessionTreeProps = Pick<
   WorkspaceBrowserProps,
   'useSessionStatus' | 'startSession' | 'open' | 'openSessionMenu' | 'openWorkspaceMenu' | 'useContextMenuTarget' | 'useContextMenu'
-  | 'insertWorkspaceBefore' | 't' | 'usePanelInfo'
+  | 'insertWorkspaceBefore' | 'moveToGroup' | 't' | 'usePanelInfo'
   | 'useRemoteAccess' | 'useSessionAccess' | 'useWorkspaceAccess' | 'openGroupMenu' | 'openFolderMenu'
 > & PropsRenderSlots<
   | 'sidebar.workspaces.session.row.action'
@@ -358,7 +360,7 @@ function SessionTree({
   workspaceReady, animationResetKey, usePanelInfo, useSessionAccess, useWorkspaceAccess,
   onSessionRenameRequest,
   renderSlot, openSessionMenu, openWorkspaceMenu, useContextMenuTarget, useContextMenu,
-  insertWorkspaceBefore,
+  insertWorkspaceBefore, moveToGroup,
   nestWorkspaces, groupExpansion, setGroupExpanded,
   setSessionOrder, home, t,
   revealSessionId, onSessionRevealed, shortcuts,
@@ -494,9 +496,36 @@ function SessionTree({
     const nextOrder = sessionDragOrder(accountSessionIds, renderedSessions, activeDrag, over)
     if (nextOrder !== undefined) setSessionOrder(activeDrag.accountKey, nextOrder)
   }
-  // Group members keep the order their Group stores, so only top-level Workspaces reorder by drag.
+  // Top-level Workspaces reorder by drag; a Workspace dropped on a Group or a Group member is filed in that Group.
   const topLevelSet = useMemo(() => new Set<string>(topLevelWorkspaceIds), [topLevelWorkspaceIds])
   const reorderable = (workspaceId: string): boolean => nestWorkspaces || topLevelSet.has(workspaceId)
+  const groupOf = (workspaceId: string): GroupId | undefined =>
+    workspaceGroups.find(candidate => candidate.workspaceIds.some(id => id === workspaceId))?.groupId
+  const reportDragFailure = (reason: unknown): void => { console.warn('workspace move rejected:', reason) }
+  /** File a Workspace in a Group, or lift it out and place it among the top-level Workspaces. */
+  const commitOrganizedDrag = (workspaceId: WorkspaceId, over: NonNullable<WorkspaceDragState['over']>): void => {
+    const targetGroup = groupOf(over.id)
+    const sourceGroup = groupOf(workspaceId)
+    if (targetGroup !== undefined) {
+      if (targetGroup !== sourceGroup) moveToGroup(workspaceId, targetGroup).catch(reportDragFailure)
+      return
+    }
+    const siblings = workspaces.filter(workspace => topLevelSet.has(workspace.workspaceId) && workspace.workspaceId !== workspaceId)
+    const rowIndex = siblings.findIndex(workspace => workspace.workspaceId === over.id)
+    if (rowIndex === -1) return
+    const anchor = over.half === 'before' ? over.id : siblings[rowIndex + 1]?.workspaceId
+    const place = async (): Promise<void> => {
+      if (sourceGroup !== undefined) await moveToGroup(workspaceId, undefined)
+      await insertWorkspaceBefore(workspaceId, anchor)
+    }
+    if (sourceGroup === undefined) {
+      const order = workspaces.filter(workspace => topLevelSet.has(workspace.workspaceId))
+      const sourceIndex = order.findIndex(workspace => workspace.workspaceId === workspaceId)
+      const anchorIndex = anchor === undefined ? order.length : order.findIndex(workspace => workspace.workspaceId === anchor)
+      if (anchorIndex === sourceIndex || anchorIndex === sourceIndex + 1) return
+    }
+    place().catch(reportDragFailure)
+  }
   const commitWorkspaceDrag = (
     activeDrag: WorkspaceDragState,
     over: NonNullable<WorkspaceDragState['over']>,
@@ -504,6 +533,10 @@ function SessionTree({
     if (workspaceDropCommitted.current) return
     workspaceDropCommitted.current = true
     setWorkspaceDrag(null)
+    if (!nestWorkspaces) {
+      commitOrganizedDrag(activeDrag.workspaceId, over)
+      return
+    }
     const owner = parents.get(activeDrag.workspaceId)
     const siblings = workspaces.filter(workspace =>
       parents.get(workspace.workspaceId) === owner && reorderable(workspace.workspaceId))
@@ -597,7 +630,6 @@ function SessionTree({
     const workspaceId = group.workspaceId
     const children = childrenByParent.get(group.key) ?? []
     const compatibleDrag = workspaceDrag !== null && parents.get(workspaceDrag.workspaceId) === parents.get(group.key)
-      && reorderable(workspaceDrag.workspaceId) && reorderable(group.key)
     const workspaceView = workspaceId === undefined || nestWorkspaces
       ? undefined
       : workspaces.find(candidate => candidate.workspaceId === workspaceId)
@@ -640,7 +672,7 @@ function SessionTree({
     const workspaceMarker = workspaceId !== undefined && workspaceDrag?.over?.id === workspaceId
       ? workspaceDrag.over.half
       : null
-    const workspaceDragProps = workspaceId === undefined || !reorderable(workspaceId) ? undefined : {
+    const workspaceDragProps = workspaceId === undefined ? undefined : {
       start: () => {
         workspaceDropCommitted.current = false
         setWorkspaceDrag({ workspaceId, over: null })
@@ -659,7 +691,7 @@ function SessionTree({
       : (half: 'before' | 'after') => {
         setWorkspaceDrag(active => active === null
           ? active
-          : { ...active, over: { id: workspaceId, half } })
+          : { ...active, over: { id: workspaceId, half }, overGroup: undefined })
       }
     const dropWorkspace = workspaceId === undefined || !compatibleDrag
       ? undefined
@@ -686,7 +718,7 @@ function SessionTree({
             e.stopPropagation()
             if (hoverWorkspace === undefined) {
               e.dataTransfer.dropEffect = 'none'
-              if (workspaceDrag.over !== null) setWorkspaceDrag({ ...workspaceDrag, over: null })
+              if (workspaceDrag.over !== null) setWorkspaceDrag({ ...workspaceDrag, over: null, overGroup: undefined })
             } else {
               e.dataTransfer.dropEffect = 'move'
               hoverWorkspace(workspaceGroupHalf(e))
@@ -777,7 +809,31 @@ function SessionTree({
       const expanded = groupExpansion[workspaceGroupExpansionKey(workspaceGroup.groupId)] === true
       rowKeys.push(`group:${workspaceGroup.groupId}`)
       rows.push(
-        <div key={`group:${workspaceGroup.groupId}`} className={css.groupSection}>
+        <div
+          key={`group:${workspaceGroup.groupId}`}
+          className={clsx(css.groupSection, workspaceDrag?.overGroup === workspaceGroup.groupId && css.groupDropTarget)}
+          onDragOver={workspaceDrag === null
+            ? undefined
+            : (e) => {
+              e.preventDefault()
+              e.dataTransfer.dropEffect = 'move'
+              if (workspaceDrag.overGroup !== workspaceGroup.groupId) {
+                setWorkspaceDrag({ ...workspaceDrag, over: null, overGroup: workspaceGroup.groupId })
+              }
+            }}
+          onDrop={workspaceDrag === null
+            ? undefined
+            : (e) => {
+              e.preventDefault()
+              if (workspaceDropCommitted.current) return
+              workspaceDropCommitted.current = true
+              const dragged = workspaceDrag.workspaceId
+              setWorkspaceDrag(null)
+              if (groupOf(dragged) !== workspaceGroup.groupId) {
+                moveToGroup(dragged, workspaceGroup.groupId).catch(reportDragFailure)
+              }
+            }}
+        >
           <GroupRowItem
             groupId={workspaceGroup.groupId} title={workspaceGroup.title} expanded={expanded}
             containsCurrent={current !== undefined && members.some(member =>
@@ -1060,7 +1116,7 @@ export function WorkspaceBrowser({
   requestSessionRename,
   notifyArchivedNotOpenable,
   renameWorkspace, useWorkspaceActionRequest, settleWorkspaceAction,
-  deleteWorkspace, createGroup, renameGroup, deleteGroup, createFolder, renameFolder, deleteFolder,
+  deleteWorkspace, moveToGroup, createGroup, renameGroup, deleteGroup, createFolder, renameFolder, deleteFolder,
   openGroupMenu, openFolderMenu,
   insertWorkspaceBefore,
   unarchiveSession,
@@ -1600,6 +1656,7 @@ export function WorkspaceBrowser({
                 startSession={startSession}
                 open={guardedOpen}
                 insertWorkspaceBefore={insertWorkspaceBefore}
+                moveToGroup={moveToGroup}
                 revealSessionId={revealSessionId}
                 onSessionRevealed={acknowledgeSessionReveal}
                 home={home}
