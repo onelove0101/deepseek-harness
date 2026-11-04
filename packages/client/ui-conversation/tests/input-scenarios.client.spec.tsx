@@ -278,7 +278,7 @@ describe('scenario A: menu-pick /goal, type args, enter submits', () => {
 })
 
 describe('scenario: Composer add menu', () => {
-  it('opens the command source with launcher provenance', async () => {
+  it('opens the command source from the launcher origin', async () => {
     const candidates = vi.fn(async (_session: ClientSessionContext, _request: { origin?: 'launcher' }) => [{ name: 'expert' }])
     const b = await scopedBench((inputTriggers) => {
       inputTriggers.registerSource({

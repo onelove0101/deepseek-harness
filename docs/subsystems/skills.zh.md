@@ -268,6 +268,14 @@ Host owner of the `experts` Remote namespace and of Expert invocation.
 @Remote list(_request: ExpertListRequest, signal: AbortSignal): Promise<ExpertLibraryValue>
 
 /**
+ * Read the enabled Experts in usage order for the composer menu.
+ * @param _request - no fields.
+ * @param signal - caller lifetime carried by the Remote transport.
+ * @returns enabled Experts, most used first, then most recently used, then by name.
+ */
+@Remote ranked(_request: ExpertRankedRequest, signal: AbortSignal): Promise<ExpertRankedValue>
+
+/**
  * Create an Expert, or edit the Expert named by `request.id`.
  * @param request - desired Expert fields.
  * @param signal - caller lifetime carried by the Remote transport.

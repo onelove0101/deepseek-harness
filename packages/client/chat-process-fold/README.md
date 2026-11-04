@@ -1,84 +1,91 @@
+---
+description: "Per-step chat folding for the dsh web client: each tool call and finished reasoning step collapses into its own row, and the final answer stays visible."
+kind: "package-reference"
+---
+
 # @deepseek-ai/dsh-client-chat-process-fold
 
 English | [中文](README.zh.md)
 
-Browser-only plugin that folds each individual execution step — a tool call plus
-its result, or a settled reasoning segment — into its own small collapsible Chat
-row, anchored at that step's own position in the flow. The final answer is never
-folded: this Definition never folds assistant reply text, so the result stays
-outside every box exactly as the native chat renders it.
+## Summary
 
-When the plugin is enabled, it also publishes a `chatProcessFold` preference so
-the native chat target folds its own process rows during open (in-flight) Turns
-too, keeping the page from streaming one tool card after another.
+Fold each tool call and each finished reasoning step into its own chat row, and leave the final answer visible. Open a row to read that step's summary; a failed tool result is shown as an error. The same switch folds the chat's own process rows while a turn is still running, so the page does not stream one tool card after another. Folding is on by default and can be turned off in General Settings. Removing the plugin from the Web composition restores the original process list.
 
-## Behavior
+## Table of Contents
 
-- A `process-fold` Chat Node **per individual step**, layered on top of the
-  existing `turn-process` disclosure (no change to `TurnProcessNodeView` or the
-  chat snapshot layout). Each step is identified by its tool call id
-  (`tool:<callId>`) or reasoning event seq (`reason:<seq>`).
-- Each step folds into one compact box: a header (arrow + kind glyph + title)
-  and, when expanded, that step's summary. Failed tool results are highlighted
-  in the error color. Every step folds and expands independently.
-- Folded summaries are truncated to `SUMMARY_LIMIT` code points; full content is
-  never copied here (the native rows keep showing the original tool/reasoning
-  cards through the existing disclosure).
-- The plugin exposes a `chatProcessFold` service (`ctx.provide`) whose `live`
-  store reflects the persisted `chat-process-fold.enabled` toggle. The native
-  chat target reads it via `ctx.get`, so when the toggle is on, native process
-  rows fold during open Turns too; when it is off (or this plugin is composed
-  out), the native turn-process disclosure behaves exactly as before.
-- A General Settings toggle `chat-process-fold.enabled` (default on) installs or
-  removes the fold surface. Plugin `Config.enabled` (default true) is the master
-  switch.
+- [Use this package](#use-this-package)
+- [Understand the implementation](#understand-the-implementation)
+- [Further Exploration](#further-exploration)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
 
-## Config
+-----
 
-| Field | Type | Default | Meaning |
-| --- | --- | --- | --- |
-| `enabled` | `boolean` | `true` | Master switch; `false` folds nothing and publishes no preference regardless of settings. |
+<a id="use-this-package"></a>
+## Use this package
 
-Durable settings namespace: `chat-process-fold.enabled`.
+Mount `@deepseek-ai/dsh-client-chat-process-fold` in a Web composition that already provides chat, conversation, settings, and locale. Folding starts on. Turn it off in General Settings with the `chat-process-fold.enabled` switch, or set the client plugin `enabled` field to `false` to fold nothing and publish no preference.
 
-## Events
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `enabled` | `true` | Master switch. `false` folds nothing and publishes no preference, regardless of the settings toggle. |
 
-Registers the `process-fold` Conversation Node Definition on `ctx.uiConversation`
-and a keyed renderer on the chat `conversation.chat.node` slot. It consumes only
-durable events (`tool/call`, `tool/result`, settled `assistant/message`) and
-never transient streams, so folding is deterministic and replayable. Nothing
-written here reaches a model request.
+-----
 
-## Extension points / composition
+<a id="understand-the-implementation"></a>
+## Understand the implementation
 
-Composing this plugin out (removing its web-app roster row) removes the fold
-surface entirely and leaves the chat's native turn-process disclosure unchanged.
+<details>
+<summary>Implementation internals — click to expand</summary>
 
+Each tool call and each settled reasoning segment becomes one `process-fold` Chat Node at that step's place in the flow. A tool step is keyed `tool:<callId>` and a reasoning step is keyed `reason:<seq>`. The node shows a header and, when open, a summary clipped to `SUMMARY_LIMIT` code points. The native tool and reasoning cards stay in the existing turn-process disclosure.
+
+The plugin provides `chatProcessFold`. Its live value follows the persisted toggle. While the toggle is on, the chat target also folds its own process rows during an open turn. While the toggle is off, or when this plugin is not composed, that disclosure behaves as it does without the plugin.
+
+The definition reads only durable `tool/call`, `tool/result`, and settled `assistant/message` events. It does not read transient streams.
+
+</details>
+
+-----
+
+<a id="further-exploration"></a>
+## Further Exploration
+
+- [ui-chat](../ui-chat/README.md) — the chat target that honors the published fold preference.
+- [ui-conversation](../ui-conversation/README.md) — the Conversation Node registry this plugin extends.
+- [ui-settings-general](../ui-settings-general/README.md) — the General Settings page that hosts the fold switch.
+
+-----
+
+<a id="model-experience"></a>
 ## Model Experience
 
-None, as this package is browser-only presentation. It adds no request context
-and has no KV-cache effect: the fold box derives from durable session events on
-the client and never changes the model-visible prompt or history.
-KV cache effect: does not invalidate — it adds no tokens and touches no request.
+None, as the package is a browser-side presentation of logged process steps and registers nothing model-facing.
 
-## Published invariants
+#### KV Cache effect
 
-None. Folding correctness is a deterministic pure fold over session events with
-no independent runtime observation that could diverge, so no `./invariant` is
-published.
+None; this package neither assembles nor sends a provider request.
 
 ## Known Limitations and Deferred Work
 
-- **Field-duplicate fold content** — the fold box lists folded summaries while
-  the native `turn-process` disclosure still shows the original rows; the two are
-  not yet reconciled into a single collapsed region without modifying ui-chat's
-  snapshot layout, which this plugin deliberately avoids.
-- **Live folding needs the chat target** — when the toggle is on, folding native
-  process rows during open Turns depends on ui-chat honoring the published
-  `chatProcessFold` preference; a ui-chat build too old to read it only has the
-  per-step boxes, with native rows streaming as before.
-- **Live reasoning not streamed into the box** — only settled `assistant/message`
-  reasoning is folded; in-flight reasoning deltas appear only after settlement.
-- **`chat-process-fold.enabled` toggle unregisters on change** — the surface is
-  installed/uninstalled by policy publication; existing open sessions pick it up
-  on the next publication rather than instantaneously.
+<a id="known-limitations-and-deferred-work"></a>
+
+These limits are the current folding behavior.
+
+- **The fold and the native process list both show the step** — the fold box lists a summary while the turn-process disclosure still shows the original row.
+- **Open-turn folding depends on the chat target** — a chat build that does not read `chatProcessFold` keeps streaming native rows and only shows the per-step boxes.
+- **In-flight reasoning stays outside the box** — only settled `assistant/message` reasoning is folded.
+- **A toggle change applies on the next publication** — an already open session picks up the installed or removed fold when the setting is published again.
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+None.
+
+</details>
+
+**Runtime invariant:** No companion is published. Folding is a deterministic derivation of durable session events, and this package owns no independent runtime observation that could diverge.

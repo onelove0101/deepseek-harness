@@ -63,7 +63,7 @@ interface Workspace {
    */
   readonly sessionIds: readonly SessionId[]
 
-  /** Ordered logical Session folders; members are absent from the Workspace root. */
+  /** Ordered logical Session folders. Sessions not listed remain at the Workspace root. */
   readonly folders: readonly WorkspaceFolder[]
 
   /**
@@ -111,31 +111,31 @@ interface Workspace {
   detachSession(sessionId: SessionId): Promise<void>
 
   /**
-   * Create one logical Folder under this Workspace. It never creates a filesystem directory.
+   * Create a logical Session folder in this Workspace.
    * @param title - Folder display title.
-   * @returns the newly durable Folder.
+   * @returns the newly stored Folder.
    */
   createFolder(title: string): Promise<WorkspaceFolder>
 
   /**
-   * Replace one logical Folder's display title.
+   * Rename a logical Session folder.
    * @param folderId - Folder to rename.
-   * @param title - New Folder display title.
+   * @param title - New display title.
    * @returns resolution after durability.
    */
   setFolderTitle(folderId: FolderId, title: string): Promise<void>
 
   /**
-   * Delete one logical Folder and return its Sessions to the Workspace root.
-   * @param folderId - Folder to delete.
+   * Remove a logical Session folder and return its Sessions to the Workspace root.
+   * @param folderId - Folder to remove.
    * @returns resolution after durability.
    */
   deleteFolder(folderId: FolderId): Promise<void>
 
   /**
-   * File an accounted Session in a logical Folder, or return it to the Workspace root.
-   * @param sessionId - Accounted Session to file.
-   * @param folderId - Destination Folder; omitted returns the Session to the root.
+   * File an owned Session in a Folder, or return it to the Workspace root.
+   * @param sessionId - Session already owned by this Workspace.
+   * @param folderId - Target Folder; omitted returns the Session to root.
    * @returns resolution after durability.
    */
   moveSessionToFolder(sessionId: SessionId, folderId?: FolderId): Promise<void>
@@ -394,6 +394,62 @@ Host service backing the generated `ctx.remote.workspace` namespace.
 @Remote('insertSessionBefore') insertSessionBefore(request: WorkspaceInsertSessionBeforeRequest): Promise<WorkspaceValue>
 
 /**
+ * Create one Workspace Group with a unique non-blank title.
+ * @param request - proposed title.
+ * @returns the new Group and the complete resulting layout.
+ */
+@Remote('createGroup') createGroup(request: WorkspaceGroupCreateRequest): Promise<WorkspaceGroupValue>
+
+/**
+ * Rename one Workspace Group to a unique non-blank title.
+ * @param request - Group identity and proposed title.
+ * @returns the updated Group and the complete resulting layout.
+ */
+@Remote('renameGroup') renameGroup(request: WorkspaceGroupRenameRequest): Promise<WorkspaceGroupValue>
+
+/**
+ * Dissolve one Group while retaining its Workspaces at the top level.
+ * @param request - Group identity to remove.
+ * @returns the complete resulting layout.
+ */
+@Remote('deleteGroup') deleteGroup(request: WorkspaceGroupDeleteRequest): Promise<WorkspaceLayoutValue>
+
+/**
+ * File one Workspace in a Group, or lift it to the top level.
+ * @param request - Workspace identity and optional target Group.
+ * @returns the complete resulting layout.
+ */
+@Remote('moveToGroup') moveToGroup(request: WorkspaceMoveToGroupRequest): Promise<WorkspaceLayoutValue>
+
+/**
+ * Create one Session Folder inside a Workspace.
+ * @param request - Workspace identity and proposed title.
+ * @returns the new Folder and its owning Workspace.
+ */
+@Remote('createFolder') createFolder(request: WorkspaceFolderCreateRequest): Promise<WorkspaceFolderValue>
+
+/**
+ * Rename one Session Folder.
+ * @param request - Workspace, Folder, and proposed title.
+ * @returns the updated Workspace projection.
+ */
+@Remote('renameFolder') renameFolder(request: WorkspaceFolderRenameRequest): Promise<WorkspaceValue>
+
+/**
+ * Remove one Session Folder while retaining its Sessions in the Workspace.
+ * @param request - Workspace and Folder identities.
+ * @returns the updated Workspace projection.
+ */
+@Remote('deleteFolder') deleteFolder(request: WorkspaceFolderDeleteRequest): Promise<WorkspaceValue>
+
+/**
+ * File one accounted Session in a Folder, or return it to the Workspace root.
+ * @param request - Workspace, Session, and optional target Folder.
+ * @returns the updated Workspace projection.
+ */
+@Remote('moveSessionToFolder') moveSessionToFolder(request: WorkspaceMoveSessionToFolderRequest): Promise<WorkspaceValue>
+
+/**
  * Hide one known Session from Workspace grouping surfaces.
  * @param request - Session identity to archive.
  * @returns the complete resulting archive set.
@@ -563,6 +619,53 @@ delete(id: WorkspaceId): Promise<boolean>
  * @returns the complete committed workspace order.
  */
 insertBefore(id: WorkspaceId, beforeId?: WorkspaceId): Promise<readonly WorkspaceId[]>
+
+/**
+ * Create a workspace group folder. The new group is prepended to the
+ * durable group display order. Group titles are not unique at this layer;
+ * the Remote command surface enforces the title-uniqueness policy.
+ * @param title - Display title.
+ * @returns the newly durable group.
+ */
+async createGroup(title: string): Promise<WorkspaceGroup>
+
+/**
+ * Look up a group by id.
+ * @param id - Group id.
+ * @returns the group, or `undefined` when unknown.
+ */
+getGroup(id: GroupId): WorkspaceGroup | undefined
+
+/**
+ * Synchronous group projection in durable group display order.
+ * @returns a fresh ordered array of group views.
+ */
+listGroups(): WorkspaceGroup[]
+
+/**
+ * Delete one group while retaining every filed workspace registration: the
+ * members are filed back to the top level at the head of the workspace
+ * order (preserving their in-group order) before the group record drops,
+ * so no workspace is ever lost with its folder. Unknown ids reject.
+ * @param id - Group to remove.
+ * @returns resolution after durability.
+ */
+deleteGroup(id: GroupId): Promise<void>
+
+/**
+ * File one workspace under a group — appended to the group's member order —
+ * or lift it back to the head of the top-level order when `groupId` is
+ * omitted. Filing never touches the workspace's session accounting. An
+ * unknown workspace rejects with {@link WorkspaceOrderInvalidError}; an
+ * unknown target group rejects with {@link WorkspaceGroupUnknownError}; a
+ * move to the current slot resolves without writing. The transfer crosses
+ * two durable slots, so it runs inside a `group-move` marker window that
+ * startup recovery completes forward.
+ * @param workspaceId - Workspace to file.
+ * @param groupId - Target group; omitted files top-level.
+ * @returns resolution after durability.
+ */
+moveToGroup(workspaceId: WorkspaceId, groupId?: GroupId): Promise<void>
 
 /**
  * Archive one session durably. The session must exist (live or in session

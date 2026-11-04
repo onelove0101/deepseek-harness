@@ -503,7 +503,7 @@ describe('programmatic source launcher', () => {
     expect(controller.menu.getSnapshot().groups.map(group => group.source)).toEqual(['command', 'skill'])
   })
 
-  it('passes launcher provenance through refreshes and clears it for typed tracking', async () => {
+  it('passes the launcher origin through refreshes and clears it for typed tracking', async () => {
     const command = deferredSource('/', 'command')
     const skill = deferredSource('/', 'skill')
     const { controller } = controllerBench([command.source, skill.source])

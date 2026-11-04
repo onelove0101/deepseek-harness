@@ -249,7 +249,11 @@ export interface InvocationMaterial {
 
 const NO_LIBRARY: LibrarySelection = { direct: [], knowledgeBases: [], omitted: [] }
 
-/** Total UTF-8 bytes of rendered text blocks. */
+/**
+ * Total UTF-8 bytes of rendered text blocks.
+ * @param blocks - rendered text blocks.
+ * @returns the summed UTF-8 byte length.
+ */
 export function renderedBytes(blocks: readonly string[]): number {
   return blocks.reduce((sum, block) => sum + utf8Bytes(block), 0)
 }

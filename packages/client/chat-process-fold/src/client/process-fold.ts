@@ -85,7 +85,11 @@ function toolExcerpt(name: string, argsRaw: string): string {
   return clip(`${name}(${excerpt})`, SUMMARY_LIMIT)
 }
 
-/** Clip a display summary to the shared budget. */
+/**
+ * Clip a display summary to the shared budget.
+ * @param value - summary text.
+ * @returns the clipped single-line summary.
+ */
 export function clipSummary(value: string): string {
   return clip(value.replace(/\s+/g, ' '), SUMMARY_LIMIT)
 }

@@ -406,22 +406,38 @@ export function deriveGroups(
   return groups
 }
 
-/** Stable browser-local expansion key for one durable Workspace Group. */
+/**
+ * Stable browser-local expansion key for one durable Workspace Group.
+ * @param groupId - Group identity.
+ * @returns the expansion key.
+ */
 export function workspaceGroupExpansionKey(groupId: string): string {
   return `workspace-group:${groupId}`
 }
 
-/** Stable browser-local expansion key for one Workspace. */
+/**
+ * Stable browser-local expansion key for one Workspace.
+ * @param workspaceId - Workspace identity.
+ * @returns the expansion key.
+ */
 export function workspaceExpansionKey(workspaceId: WorkspaceId): string {
   return `workspace:${workspaceId}`
 }
 
-/** Stable browser-local expansion key for one Workspace-local Folder. */
+/**
+ * Stable browser-local expansion key for one Workspace-local Folder.
+ * @param workspaceId - owning Workspace.
+ * @param folderId - Folder identity.
+ * @returns the expansion key.
+ */
 export function folderExpansionKey(workspaceId: WorkspaceId, folderId: string): string {
   return `workspace-folder:${workspaceId}:${folderId}`
 }
 
-/** Stable browser-local expansion key for the synthetic ungrouped Session branch. */
+/**
+ * Stable browser-local expansion key for the synthetic ungrouped Session branch.
+ * @returns the expansion key.
+ */
 export function ungroupedExpansionKey(): string {
   return 'workspace-ungrouped'
 }
@@ -559,7 +575,12 @@ function workspaceTreeNode(
 /**
  * Derive durable Workspace Groups, Workspaces, Workspace roots, Folder rows,
  * and the synthetic ungrouped branch from one complete controller layout.
+ * @param list - current Session list, including the selected Session and summaries.
+ * @param workspaces - authoritative Workspace views, including Folder membership.
  * @param layout - authoritative Workspace placement and Group order.
+ * @param archivedSessionIds - Sessions hidden from the hierarchy.
+ * @param pendingInteractions - pending interaction markers by Session.
+ * @param view - browser-local expansion and ungrouped order.
  * @returns hierarchy rows in their durable display order.
  */
 export function deriveWorkspaceHierarchy(

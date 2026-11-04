@@ -896,7 +896,10 @@ describe('Workspace Session folders', () => {
     const second = await workspace.createFolder('Second')
     await workspace.moveSessionToFolder(SessionId('s1'), first.id)
     const firstUpdatedAt = workspace.folders[0]!.updatedAt
-    await new Promise(resolve => setTimeout(resolve, 1))
+    const waitStarted = Date.now()
+    while (new Date().toISOString() === firstUpdatedAt && Date.now() - waitStarted < 1000) {
+      await new Promise(resolve => setTimeout(resolve, 2))
+    }
     await workspace.moveSessionToFolder(SessionId('s1'), second.id)
     const written = result.changes.length
     await workspace.moveSessionToFolder(SessionId('s1'), second.id)

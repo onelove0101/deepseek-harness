@@ -7,7 +7,7 @@ kind: "package-reference"
 
 [English](README.md) | 中文
 
-## 摘要
+## 概述
 
 **技能**设置页展示 Host 已加载的全部 skill（技能），并允许用户逐个关闭或开启。被禁用的 skill 仍保留在列表中，但会从所有会话的模型 skill 目录、`skill` 工具和 `/` 菜单中消失。**添加技能**用于登记一个包含 `SKILL.md` 的本地目录，用户无需编辑配置文件就能引入 skill。启用状态和已添加的目录都保存在 Host 用户设置中，因此重启后依然有效，并对连接同一 Host 的所有客户端生效。
 
@@ -18,7 +18,7 @@ kind: "package-reference"
 - [延伸阅读](#further-exploration)
 - [模型体验](#model-experience)
 - [已知限制与延期工作](#known-limitations-and-deferred-work)
-- [开发说明](#dev-note)
+- [开发备注](#dev-note)
 
 -----
 
@@ -103,7 +103,7 @@ kind: "package-reference"
 - **添加需要 Host 机器上的路径** — 路径由 Host 读取，而不是从浏览器上传。
 
 <a id="dev-note"></a>
-### 开发说明
+### 开发备注
 
 <details>
 <summary>维护者的工作背景 — 点击展开</summary>
