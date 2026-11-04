@@ -42,6 +42,8 @@ kind: "package-reference"
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `collectCacheMaxEntries` | `128` | 内存中保留的已完成 cwd/提供方目录数 |
+| `disabled` | `[]` | Volatile。用户关闭的 skill 名称，对所有消费方隐藏 |
+| `dirs` | `[]` | Volatile。用户添加的绝对目录，每个目录包含一个 `SKILL.md` |
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-skill)是每个受支持字段的穷尽式真源。
 

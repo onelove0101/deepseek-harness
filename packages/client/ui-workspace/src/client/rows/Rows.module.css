@@ -149,7 +149,7 @@
   position: absolute;
   z-index: -1;
   inset: 0;
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-sm);
   padding: 1px;
   background: conic-gradient(
     from var(--dsh-session-row-aurora-angle),

@@ -7,7 +7,7 @@ import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type { CommandUiContract } from '@deepseek-ai/dsh-client-ui-commands/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { InputTriggerServiceContract, InputTriggerSource } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
-import { IconAgentPresetOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconAgentPresetOutlineMedium } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -126,7 +126,7 @@ export function apply(ctx: ClientContext): void {
     name: 'expert',
     label: () => t('addLabel'),
     description: () => t('addDescription'),
-    icon: IconAgentPresetOutline16,
+    icon: IconAgentPresetOutlineMedium,
     available: session => sessions.subagentAddress(session.sessionId) === undefined,
     flyout: {
       options: async (_session, signal) => {

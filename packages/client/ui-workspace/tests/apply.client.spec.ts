@@ -7,7 +7,7 @@ import type {
   ISessions, SessionListState, SessionReference, SessionSnapshot, SessionSummary,
 } from '@deepseek-ai/dsh-api-session-controller/client'
 import { SessionForkError } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { WorkspaceId, WorkspaceSnapshot, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { FolderId, GroupId, WorkspaceId, WorkspaceSnapshot, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { HostObservable, PropsRenderSlots, StoredEntry } from '@deepseek-ai/dsh-client-ui-slots'
@@ -45,14 +45,14 @@ const sessionState = (items: readonly SessionSummary[]): SessionListState => ({
 })
 const workspace = (id: string, sessionIds: readonly string[]): WorkspaceView => ({
   workspaceId: id as WorkspaceId, path: `/projects/${id}`, title: id,
-  sessionIds: sessionIds.map(sid), createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+  sessionIds: sessionIds.map(sid), folders: [], createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
 })
 const workspaceState = (
   items: readonly WorkspaceView[],
   archivedSessionIds: readonly SessionId[] = [],
   pinnedSessionIds: readonly SessionId[] = [],
 ): WorkspaceSnapshot => ({
-  items, archivedSessionIds, pinnedSessionIds, state: 'idle', phase: 'ready', error: null,
+  items, topLevelWorkspaceIds: items.map(item => item.workspaceId), groups: [], archivedSessionIds, pinnedSessionIds, state: 'idle', phase: 'ready', error: null,
 })
 
 const ALLOWED: HostObservable<boolean> = createSnapshotStore(true)
@@ -121,6 +121,8 @@ async function bench(access: 'fake' | 'static' = 'fake') {
     operation: (reference: SessionReference) => unknown,
   ) => await operation(retain(target)))
   const fork = vi.fn<ISessions['fork']>(async () => sid('forked'))
+  const moveToGroup = vi.fn(async (..._args: unknown[]) => undefined)
+  const moveSessionToFolder = vi.fn(async (..._args: unknown[]) => ({}))
   const pinSession = vi.fn(async () => undefined)
   const unpinSession = vi.fn(async () => undefined)
   // The Host snapshots the injected hooks derive from and a pin's order write
@@ -143,6 +145,8 @@ async function bench(access: 'fake' | 'static' = 'fake') {
     pinSession,
     unpinSession,
     insertSessionBefore: vi.fn(async () => ({})),
+    moveToGroup,
+    moveSessionToFolder,
   } as never)
   ctx.provide('sessions', {
     list: { getSnapshot: () => sessionSnapshot, subscribe },
@@ -171,7 +175,7 @@ async function bench(access: 'fake' | 'static' = 'fake') {
   return {
     ctx, slots: ctx.get('slots') as SlotRegistry, locale, create, rename, commands, accessSource, whenResourceAccess, stopGuard,
     retain, using, selectPanel, search, renameSession, binding, fork, pickDirectory, pinSession, unpinSession,
-    workspacesSubscribe, initializeDefault, history, scope, sessionOf,
+    workspacesSubscribe, initializeDefault, history, scope, sessionOf, moveToGroup, moveSessionToFolder,
     setWorkspaces: (snapshot: WorkspaceSnapshot): void => { workspaceSnapshot = snapshot },
     setSessions: (snapshot: SessionListState): void => { sessionSnapshot = snapshot },
   }
@@ -946,7 +950,7 @@ it('captures Workspace menu requests, rechecks mutable access, and withdraws reg
   expect(vi.spyOn(b.ctx.contextMenus, 'close')).toHaveBeenCalledOnce()
   const menu = b.ctx.contextMenus.resolve(target)
   await menu.ready
-  expect(menu.source.getSnapshot().map(item => item.id)).toEqual(['workspace.rename/rename', 'workspace.delete/delete'])
+  expect(menu.source.getSnapshot().map(item => item.id)).toEqual(['workspace.rename/rename', 'workspace.createFolder/createFolder', 'workspace.delete/delete'])
   menu.select('workspace.rename/rename')
   expect(browser.hooks.workspaceActionRequest.getSnapshot()).toEqual({ action: 'rename', workspaceId: 'alpha', displayTitle: 'Alpha', storedTitle: 'alpha' })
   browser.settleWorkspaceAction()
@@ -969,4 +973,137 @@ it('captures Workspace menu requests, rechecks mutable access, and withdraws reg
   await pending.ready
   await fiber.dispose()
   expect(pending.source.getSnapshot()).toEqual([])
+})
+
+describe('Workspace organization menus', () => {
+  const GROUPS = [
+    { groupId: 'g-research' as GroupId, title: 'Research', workspaceIds: [] as WorkspaceId[], createdAt: '', updatedAt: '' },
+    { groupId: 'g-side' as GroupId, title: 'Side', workspaceIds: [] as WorkspaceId[], createdAt: '', updatedAt: '' },
+  ]
+
+  async function mounted(snapshot: WorkspaceSnapshot) {
+    const b = await bench()
+    b.setWorkspaces(snapshot)
+    declare(b.slots, 'sidebar.workspaces')
+    await b.ctx.plugin({ inject: [...inject], apply }).await()
+    const browser = faceOf(b.slots.entries('sidebar.workspaces')[0]!) as WorkspaceBrowserInjected
+    return { b, browser }
+  }
+
+  async function resolveMenu(b: Awaited<ReturnType<typeof bench>>, target: ContextMenuTarget) {
+    const menu = b.ctx.contextMenus.resolve(target)
+    await menu.ready
+    return menu
+  }
+
+  const workspaceTarget = (): ContextMenuTarget => ({
+    kind: 'workspace', value: { workspaceId: 'alpha' as WorkspaceId, path: '/projects/alpha', displayTitle: 'Alpha' },
+  })
+
+  it('files a top-level Workspace into a Group and offers no top-level leaf', async () => {
+    const snapshot = { ...workspaceState([workspace('alpha', [])]), groups: GROUPS }
+    const { b } = await mounted(snapshot)
+    const menu = await resolveMenu(b, workspaceTarget())
+    const move = menu.source.getSnapshot().find(item => item.id === 'workspace.moveToGroup/moveToGroup')!
+    expect(move.children?.map(child => child.label)).toEqual(['Research', 'Side'])
+    menu.select(move.children![0]!.id)
+    expect(b.moveToGroup).toHaveBeenCalledWith('alpha', 'g-research')
+  })
+
+  it('lifts a grouped Workspace to the top level and omits its own Group', async () => {
+    const groups = [{ ...GROUPS[0]!, workspaceIds: ['alpha' as WorkspaceId] }, GROUPS[1]!]
+    const { b } = await mounted({ ...workspaceState([workspace('alpha', [])]), topLevelWorkspaceIds: [], groups })
+    const menu = await resolveMenu(b, workspaceTarget())
+    const move = menu.source.getSnapshot().find(item => item.id === 'workspace.moveToGroup/moveToGroup')!
+    expect(move.children?.map(child => child.label)).toEqual(['Side', '移至工作区顶层'])
+    menu.select(move.children!.at(-1)!.id)
+    expect(b.moveToGroup).toHaveBeenCalledWith('alpha', undefined)
+  })
+
+  it('omits the Group move entry when there is nowhere to move', async () => {
+    const { b } = await mounted(workspaceState([workspace('alpha', [])]))
+    const menu = await resolveMenu(b, workspaceTarget())
+    expect(menu.source.getSnapshot().map(item => item.id)).not.toContain('workspace.moveToGroup/moveToGroup')
+  })
+
+  it('logs and keeps the layout when the Group move rejects', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const rejection = new Error('group move denied')
+      const { b } = await mounted({ ...workspaceState([workspace('alpha', [])]), groups: GROUPS })
+      b.moveToGroup.mockRejectedValueOnce(rejection)
+      const menu = await resolveMenu(b, workspaceTarget())
+      const move = menu.source.getSnapshot().find(item => item.id === 'workspace.moveToGroup/moveToGroup')!
+      menu.select(move.children![1]!.id)
+      await vi.waitFor(() => { expect(error).toHaveBeenCalledWith('workspace group move rejected:', rejection) })
+    } finally {
+      error.mockRestore()
+    }
+  })
+
+  it('raises dialog requests for Folder creation and for Group and Folder rename and removal', async () => {
+    const { b, browser } = await mounted(workspaceState([workspace('alpha', [])]))
+    const request = () => browser.hooks.workspaceActionRequest.getSnapshot()
+    ;(await resolveMenu(b, workspaceTarget())).select('workspace.createFolder/createFolder')
+    expect(request()).toEqual({ action: 'createFolder', workspaceId: 'alpha', displayTitle: 'Alpha' })
+    const group: ContextMenuTarget = { kind: 'workspaceGroup', value: { groupId: 'g-research' as GroupId, displayTitle: 'Research' } }
+    ;(await resolveMenu(b, group)).select('workspaceGroup.rename/rename')
+    expect(request()).toEqual({ action: 'renameGroup', groupId: 'g-research', displayTitle: 'Research' })
+    ;(await resolveMenu(b, group)).select('workspaceGroup.delete/delete')
+    expect(request()).toEqual({ action: 'deleteGroup', groupId: 'g-research', displayTitle: 'Research' })
+    const folder: ContextMenuTarget = {
+      kind: 'workspaceFolder', value: { workspaceId: 'alpha' as WorkspaceId, folderId: 'f-exp' as FolderId, displayTitle: 'Experiments' },
+    }
+    ;(await resolveMenu(b, folder)).select('workspaceFolder.rename/rename')
+    expect(request()).toEqual({ action: 'renameFolder', workspaceId: 'alpha', folderId: 'f-exp', displayTitle: 'Experiments' })
+    ;(await resolveMenu(b, folder)).select('workspaceFolder.delete/delete')
+    expect(request()).toEqual({ action: 'deleteFolder', workspaceId: 'alpha', folderId: 'f-exp', displayTitle: 'Experiments' })
+  })
+
+  const folderOf = (id: string, title: string, sessionIds: string[]) => ({
+    folderId: id as FolderId, title, sessionIds: sessionIds.map(sid), createdAt: '', updatedAt: '',
+  })
+  const sessionTarget = (): ContextMenuTarget => ({ kind: 'session', value: { sessionId: sid('draft'), displayTitle: 'draft' } })
+
+  it('files a root Session into a Folder and offers no root leaf', async () => {
+    const alpha = { ...workspace('alpha', ['draft']), folders: [folderOf('f-exp', 'Experiments', [])] }
+    const { b } = await mounted(workspaceState([alpha]))
+    const menu = await resolveMenu(b, sessionTarget())
+    const move = menu.source.getSnapshot().find(item => item.id === 'session.moveToFolder/moveToFolder')!
+    expect(move.children?.map(child => child.label)).toEqual(['Experiments'])
+    menu.select(move.children![0]!.id)
+    expect(b.moveSessionToFolder).toHaveBeenCalledWith('alpha', 'draft', 'f-exp')
+  })
+
+  it('returns a filed Session to the Workspace root and omits its own Folder', async () => {
+    const alpha = { ...workspace('alpha', ['draft']), folders: [folderOf('f-exp', 'Experiments', ['draft'])] }
+    const { b } = await mounted(workspaceState([alpha]))
+    const menu = await resolveMenu(b, sessionTarget())
+    const move = menu.source.getSnapshot().find(item => item.id === 'session.moveToFolder/moveToFolder')!
+    expect(move.children?.map(child => child.label)).toEqual(['移至工作区根目录'])
+    menu.select(move.children![0]!.id)
+    expect(b.moveSessionToFolder).toHaveBeenCalledWith('alpha', 'draft', undefined)
+  })
+
+  it('omits the Session move entry when the Workspace has no Folders', async () => {
+    const { b } = await mounted(workspaceState([workspace('alpha', ['draft'])]))
+    const menu = await resolveMenu(b, sessionTarget())
+    expect(menu.source.getSnapshot().map(item => item.id)).not.toContain('session.moveToFolder/moveToFolder')
+  })
+
+  it('logs and keeps the layout when the Session filing rejects', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const rejection = new Error('folder move denied')
+      const alpha = { ...workspace('alpha', ['draft']), folders: [folderOf('f-exp', 'Experiments', [])] }
+      const { b } = await mounted(workspaceState([alpha]))
+      b.moveSessionToFolder.mockRejectedValueOnce(rejection)
+      const menu = await resolveMenu(b, sessionTarget())
+      const move = menu.source.getSnapshot().find(item => item.id === 'session.moveToFolder/moveToFolder')!
+      menu.select(move.children![0]!.id)
+      await vi.waitFor(() => { expect(error).toHaveBeenCalledWith('session folder move rejected:', rejection) })
+    } finally {
+      error.mockRestore()
+    }
+  })
 })

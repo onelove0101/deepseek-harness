@@ -30,7 +30,7 @@ async function composed(options: {
   ctx.provide('sessionProjectionCache', { forget } as never)
   const removed: SessionId[] = []
   ctx.on('api-session/removed', (id) => { removed.push(id) })
-  const remote = createSessionTestRemote(ctx, {
+  const remote = await createSessionTestRemote(ctx, {
     defaultModelSelection: () => ({ provider: 'p', model: 'm' }),
     cwd: '/tmp',
   })

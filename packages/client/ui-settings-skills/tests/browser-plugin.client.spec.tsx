@@ -21,13 +21,13 @@ async function bench() {
   ctx.provide('locale', locale)
   const inventory = vi.fn(async () => ({ ok: true, value: { skills: [] } }))
   const remote = new TestRemote(ctx, { skills: { inventory, add: vi.fn() } })
-  const bind = vi.fn(() => ({
+  const get = vi.fn(() => ({
     getSnapshot: () => ({ status: 'ready', value: { disabled: [] }, writable: true }),
     subscribe: () => () => {},
     set: vi.fn(),
   }))
-  ctx.provide('settingsScope', { bind })
-  return { ctx, slots: ctx.get('slots') as SlotRegistry, locale, inventory, bind, remote }
+  ctx.provide('configForms', { get })
+  return { ctx, slots: ctx.get('slots') as SlotRegistry, locale, inventory, get, remote }
 }
 
 function declare(slots: SlotRegistry): () => void {
@@ -43,7 +43,7 @@ describe('ui-settings-skills browser plugin', () => {
   })
 
   it('declares the services used by the page', () => {
-    expect(inject).toEqual(['slots', 'locale', 'remote', 'remote.skills', 'settingsScope'])
+    expect(inject).toEqual(['slots', 'locale', 'remote', 'remote.skills', 'configForms'])
   })
 
   it('registers the Skills page between Agent presets and Archived sessions with localized copy', async () => {
@@ -51,7 +51,7 @@ describe('ui-settings-skills browser plugin', () => {
     declare(b.slots)
     await b.ctx.plugin({ inject: [...inject], apply }).await()
 
-    expect(b.bind).toHaveBeenCalledWith({ namespace: 'skills' })
+    expect(b.get).toHaveBeenCalledWith('skill')
     const entry = b.slots.entries('settings.section')[0]!
     expect(entry.component).toBe(SkillsSection)
     expect(entry.options).toMatchObject({ id: 'skills', order: 22 })

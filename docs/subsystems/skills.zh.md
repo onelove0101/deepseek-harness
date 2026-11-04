@@ -223,6 +223,10 @@ interface SkillViewOptions extends SkillLookupOptions {
 interface Config {
   /** Maximum number of completed cwd/provider catalogs kept in memory. */
   readonly collectCacheMaxEntries?: number
+  /** Skill names the user turned off; read per lookup, so edits apply without a remount. Defaults to none. */
+  readonly disabled?: Volatile<readonly string[]>
+  /** Absolute directories the user added, each holding one `SKILL.md`; read per lookup. Defaults to none. */
+  readonly dirs?: Volatile<readonly string[]>
 }
 ```
 
@@ -240,9 +244,9 @@ interface Config {
 
 ## 用户管理的 skill
 
-设置页的**技能**页面通过 `skills` Remote 和 `skills` 设置命名空间（`disabled`、`dirs`）管理 skill，二者都由 `SessionSkillCatalog` 拥有。`inventory` 列出无需工作区即可看到的全部 skill（含已禁用项）并带 `enabled` 标志；`add` 接受包含 `SKILL.md` 的绝对目录，把它追加到 `dirs`，并在提供方没有从该目录报告有效 skill 时回滚这次写入。`user-added` 的 `FileSystemSkillProvider` 通过 `singleSkillDirs` 选项在每次查找时读取 `dirs`，每个目录对应 `custom` 优先级下的一个 skill，列表变化时宿主调用 `control.invalidate()`。
+设置页的**技能**页面通过 `skills` Remote（由 `SessionSkillCatalog` 拥有）和 `SkillRegistry` 的两个 volatile Config 字段 `disabled`、`dirs` 管理 skill；页面经 `ConfigForm` 编辑 `skill` 配置条目上的这两个字段。`inventory` 列出无需工作区即可看到的全部 skill（含已禁用项）并带 `enabled` 标志；`add` 接受包含 `SKILL.md` 的绝对目录，通过 `settings.update('skill', …)` 把它追加到 `dirs`，并在提供方没有从该目录报告有效 skill 时回滚这次写入。`user-added` 的 `FileSystemSkillProvider` 通过 `singleSkillDirs` 选项在每次查找时从 `SkillRegistry.userPreferences()` 读取 `dirs`，每个目录对应 `custom` 优先级下的一个 skill，`settings/document-updated` 报告 `skill` 条目变化时，目录服务调用 `control.invalidate()`。
 
-`disabled` 由 `SkillRegistry.setHiddenNames()` 应用。`snapshot()`、`list()` 和 `get()` 在发现之后、返回之前丢弃被隐藏的名称，因此模型目录、`skill` 工具、`/name` 调用和 `/` 菜单保持一致，同名的低优先级 skill 也不会顶替被隐藏的 skill。调用方传入 `includeHidden` 即可看到它们，清单就是这样做的。来源在每次查找时读取，所以切换开关无需重建缓存；所有者调用 `notifyHiddenChanged()` 来发出 `skills/change`。
+`disabled` 由 `SkillRegistry.setHiddenNames()` 应用，其来源读取 `userPreferences().disabled`。`snapshot()`、`list()` 和 `get()` 在发现之后、返回之前丢弃被隐藏的名称，因此模型目录、`skill` 工具、`/name` 调用和 `/` 菜单保持一致，同名的低优先级 skill 也不会顶替被隐藏的 skill。调用方传入 `includeHidden` 即可看到它们，清单就是这样做的。来源在每次查找时读取，所以切换开关无需重建缓存；所有者调用 `notifyHiddenChanged()` 来发出 `skills/change`。
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 

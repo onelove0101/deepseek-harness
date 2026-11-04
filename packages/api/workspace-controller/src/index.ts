@@ -13,6 +13,7 @@ import type {
   WorkspaceArchiveSessionRequest,
   WorkspaceArchiveValue,
   WorkspaceBaseline,
+  WorkspaceLayout,
   WorkspaceCreateRequest,
   WorkspaceCreateValue,
   WorkspaceDeleteRequest,
@@ -301,6 +302,10 @@ export class WorkspaceController extends TypertRemoteService {
       sessionIds.filter(sessionId => access.allows({ kind: 'session', id: sessionId }))
     /** Workspaces this generation has delivered and not yet removed. */
     const delivered = new Set<WorkspaceId>()
+    const visibleLayout = (layout: WorkspaceLayout): WorkspaceLayout => ({
+      topLevelWorkspaceIds: layout.topLevelWorkspaceIds.filter(visible),
+      groups: layout.groups.map(group => ({ ...group, workspaceIds: group.workspaceIds.filter(visible) })),
+    })
     /** The admitted part of `value`; it becomes the delivered set. */
     const filtered = (value: WorkspaceBaseline): WorkspaceBaseline => {
       const items = value.items.filter(item => visible(item.workspaceId))
@@ -308,6 +313,7 @@ export class WorkspaceController extends TypertRemoteService {
       for (const item of items) delivered.add(item.workspaceId)
       return {
         items: items.map(item => ({ ...item, sessionIds: sessions(item.sessionIds) })),
+        ...visibleLayout(value),
         archivedSessionIds: sessions(value.archivedSessionIds),
         pinnedSessionIds: sessions(value.pinnedSessionIds),
       }
@@ -330,13 +336,15 @@ export class WorkspaceController extends TypertRemoteService {
         case 'remove':
           if (delivered.delete(frame.workspaceId)) yield frame
           break
-        case 'order':
-          if (frame.workspaceIds.some(workspaceId => delivered.has(workspaceId) && !visible(workspaceId))) {
+        case 'layout': {
+          const ids = [...frame.layout.topLevelWorkspaceIds, ...frame.layout.groups.flatMap(group => group.workspaceIds)]
+          if (ids.some(workspaceId => delivered.has(workspaceId) && !visible(workspaceId))) {
             yield { type: 'replace', value: filtered(this.feed.baseline()) }
           } else {
-            yield { type: 'order', workspaceIds: frame.workspaceIds.filter(visible) }
+            yield { type: 'layout', layout: visibleLayout(frame.layout) }
           }
           break
+        }
         case 'archived':
           yield { type: 'archived', archivedSessionIds: sessions(frame.archivedSessionIds) }
           break

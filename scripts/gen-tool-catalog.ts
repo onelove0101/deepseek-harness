@@ -130,6 +130,7 @@ class CatalogSessionPersistence extends SessionPersistence {
   open = unavailableCatalogPersistence
   flush = unavailableCatalogPersistence
   stat = unavailableCatalogPersistence
+  delete = unavailableCatalogPersistence
   list = unavailableCatalogPersistence
 }
 

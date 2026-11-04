@@ -55,12 +55,23 @@ declare module '@deepseek-ai/cordis' {
 }
 
 /**
- * `plugin` of the context message an invocation appends. The message content is
- * the complete snapshot the model saw (Soul, skill bodies, library text), so
- * replay never reads the live library. The generic plugin source keeps the
- * persisted source union unchanged.
+ * Durable source of the context message an invocation appends. The message
+ * content is the complete snapshot the model saw (Soul, skill bodies, library
+ * text), so replay never reads the live library.
  */
-const PLUGIN_SOURCE = 'expert'
+export interface ExpertInvocationSource {
+  readonly kind: 'expert-invocation'
+  /** Injected Expert context is instructions for the model to follow. */
+  readonly form: 'instructions'
+}
+
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    /** An Expert @mention invocation injected before the model step. */
+    'expert-invocation': ExpertInvocationSource
+  }
+}
+
 /** Longest Expert mention handle. */
 const NAME_MAX_LENGTH = 40
 /** Longest selected skill name; bounds the unavailable-skill list of an invocation. */
@@ -570,7 +581,7 @@ export class ExpertService extends TypertRemoteService {
     }, this.config.maxInvocationLibraryBytes)
     return createUserMessage({
       content: content.map(text => ({ type: 'text' as const, text })),
-      source: { kind: 'plugin', plugin: PLUGIN_SOURCE, form: 'instructions' },
+      source: { kind: 'expert-invocation', form: 'instructions' },
     })
   }
 }

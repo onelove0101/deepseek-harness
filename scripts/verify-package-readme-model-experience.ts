@@ -183,7 +183,6 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/client/ui-expert': { kind: 'none', reason: 'Browser-side settings page and menu source; the Host-side Expert injection is documented by dsh-expert.' },
   'packages/client/ui-settings': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },
   'packages/client/ui-settings-general': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },
-  'packages/client/chat-process-fold': { kind: 'none', reason: 'Browser-side fold of logged process steps; registers nothing model-facing.' },
   'packages/client/ui-settings-skills': { kind: 'none', reason: 'Browser-side settings page; registers nothing model-facing.' },
   'packages/client/ui-settings-models': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },
   'packages/client/ui-plugin-market': { kind: 'none', reason: 'Browser-side Discover tab; registers nothing model-facing.' },

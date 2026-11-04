@@ -516,6 +516,7 @@ interface WorkspaceView {
   readonly path: string
   readonly title: string
   readonly sessionIds: readonly SessionId[]
+  readonly folders: readonly []
   readonly createdAt: string
   readonly updatedAt: string
 }
@@ -545,13 +546,15 @@ type WorkspaceFollowFrame =
     readonly type: 'baseline'
     readonly value: {
       readonly items: readonly WorkspaceView[]
+      readonly topLevelWorkspaceIds: readonly WorkspaceId[]
+      readonly groups: readonly []
       readonly archivedSessionIds: readonly SessionId[]
       readonly pinnedSessionIds: readonly SessionId[]
     }
   }
   | { readonly type: 'upsert'; readonly workspace: WorkspaceView }
   | { readonly type: 'remove'; readonly workspaceId: WorkspaceId }
-  | { readonly type: 'order'; readonly workspaceIds: readonly WorkspaceId[] }
+  | { readonly type: 'layout'; readonly layout: { readonly topLevelWorkspaceIds: readonly WorkspaceId[]; readonly groups: readonly [] } }
   | { readonly type: 'archived'; readonly archivedSessionIds: readonly SessionId[] }
   | { readonly type: 'pinned'; readonly pinnedSessionIds: readonly SessionId[] }
 
@@ -2215,11 +2218,14 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
   const workspaceSnapshot = (workspace: FixtureWorkspace): WorkspaceView => ({
     ...workspace,
     sessionIds: [...workspace.sessionIds],
+    folders: [],
   })
   const workspaceBaseline = (): Extract<WorkspaceFollowFrame, { type: 'baseline' }> => ({
     type: 'baseline',
     value: {
       items: workspaces.map(workspaceSnapshot),
+      topLevelWorkspaceIds: workspaces.map(workspace => workspace.workspaceId),
+      groups: [],
       archivedSessionIds: [...archivedSessionIds],
       pinnedSessionIds: [...pinnedSessionIds],
     },
@@ -4061,6 +4067,10 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
       workspaces.unshift(created)
       const workspace = workspaceSnapshot(created)
       emitWorkspace({ type: 'upsert', workspace })
+      emitWorkspace({
+        type: 'layout',
+        layout: { topLevelWorkspaceIds: workspaces.map(candidate => candidate.workspaceId), groups: [] },
+      })
       return sessionOk({ workspace, created: true })
     },
     rename: (request) => {
@@ -4135,8 +4145,8 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         workspaces.splice(at, 0, workspace)
         if (workspaces.some((candidate, index) => candidate.workspaceId !== previousOrder[index])) {
           emitWorkspace({
-            type: 'order',
-            workspaceIds: workspaces.map(candidate => candidate.workspaceId),
+            type: 'layout',
+            layout: { topLevelWorkspaceIds: workspaces.map(candidate => candidate.workspaceId), groups: [] },
           })
         }
       }

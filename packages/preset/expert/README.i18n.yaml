@@ -1,6 +1,67 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/preset/expert/README.md
-README.md: b1cadd1e9171fa3cf8fd25978f319f7873c3508c
-README.zh.md: ce6fc04afb61f17cf7b37d0a6d8ed64e449b3329
+/:
+  en: 01cf38bb59997c00
+  zh: c030d0e15416a5ad
+/deepseek-ai-dsh-expert:
+  en: dba68a6fd57f0907
+  zh: 9f3efa7f9e5515e9
+/deepseek-ai-dsh-expert/summary:
+  en: 5fc067bfca53fddd
+  zh: f16e1e4b050c745d
+/deepseek-ai-dsh-expert/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-expert/use-this-package:
+  en: 4bcc981de8837bfd
+  zh: eabd819d5e5ffa70
+/deepseek-ai-dsh-expert/use-this-package/configuration:
+  en: 9f5790379c482651
+  zh: 2261697075b94ed9
+/deepseek-ai-dsh-expert/use-this-package/experts-documents-and-knowledge-bases:
+  en: 6adbc2bc9488e827
+  zh: d2bbdf22b1748e23
+/deepseek-ai-dsh-expert/use-this-package/invoking-an-expert:
+  en: f89c4db30aafb030
+  zh: 04ddd8e98eb0f878
+/deepseek-ai-dsh-expert/use-this-package/remote-methods:
+  en: 23069e60d300cae5
+  zh: b803ad4b9a3993b4
+/deepseek-ai-dsh-expert/understand-the-implementation:
+  en: 42b15ac6321706aa
+  zh: 7ae097f3abcc5d9c
+/deepseek-ai-dsh-expert/understand-the-implementation/storage:
+  en: 951a70231cf2e116
+  zh: 715d1ef276111bc6
+/deepseek-ai-dsh-expert/understand-the-implementation/invocation:
+  en: 56c69c2b9717d0a2
+  zh: d28ee1b7dbf2cf7f
+/deepseek-ai-dsh-expert/understand-the-implementation/source-map:
+  en: b88e1ee41a9369a2
+  zh: 86f392a264e6f65d
+/deepseek-ai-dsh-expert/further-exploration:
+  en: 611ac6f9b00f605d
+  zh: bc2a019dcb10deff
+/deepseek-ai-dsh-expert/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-expert/model-experience/the-expert-invocation-message:
+  en: 3207f003ce5679bc
+  zh: 9cdeb5831f923048
+/deepseek-ai-dsh-expert/model-experience/the-expert-invocation-message/what-the-model-sees:
+  en: fb5bd26a4f5d017d
+  zh: 6b750a2edd234fbd
+/deepseek-ai-dsh-expert/model-experience/the-expert-invocation-message/token-effect:
+  en: 3b2f5fe3ef951fc0
+  zh: d40be999dbc80c92
+/deepseek-ai-dsh-expert/model-experience/the-expert-invocation-message/kv-cache-effect:
+  en: 45da6de4bd2ed751
+  zh: 9f21c95b5b35c93c
+/deepseek-ai-dsh-expert/known-limitations-and-deferred-work:
+  en: 4fe6b4821e268d9d
+  zh: 00342eb543d598cf
+/deepseek-ai-dsh-expert/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: bf458931352ca2bf

@@ -13,6 +13,7 @@ import AgentRegistry, { agentEvents } from '@deepseek-ai/dsh-agent'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { unsupportedInbox } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { SESSION_FORMAT_VERSION, Session, SessionId } from '@deepseek-ai/dsh-session'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
 import SkillRegistry from '@deepseek-ai/dsh-skill'
@@ -80,6 +81,7 @@ async function harness(options: { root?: string; home?: string; config?: Partial
   await ctx.plugin(Storage)
   await ctx.plugin({ name: storageJsonName, inject: storageJsonInject, apply: storageJsonApply, Config: storageJsonConfig }, { root })
   await ctx.plugin({ name: storageDomainName, inject: storageDomainInject, apply: storageDomainApply, Config: storageDomainConfig }, { backend: 'json' })
+  await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(SkillRegistry)
   await ctx.plugin(SkillFileSystem, { dshHome: join(home, '.dsh'), agentsHome: join(home, '.agents'), watch: false })
@@ -426,6 +428,7 @@ function agentFor(cwd: string): Agent {
     id,
     options: {},
     session,
+    model: {} as Agent['model'],
     inbox: unsupportedInbox(),
     status: 'idle',
     send: () => {},
@@ -446,10 +449,13 @@ function userMessage(text: string, kind = 'user', extra: object = kind === 'user
   })
 }
 
+/** Route the fixed step selection carries; invocation ignores it. */
+const ROUTE = { provider: 'p', model: 'm' } as const
+
 async function step(h: Harness, agent: Agent, messages: UserMessage[]): Promise<PreStepDecision> {
   return await agentEvents(h.ctx, agent).waterfall(
     'agent/pre-step',
-    { messages, turn: 1, step: 1, signal },
+    { messages, turn: 1, step: 1, signal, modelSelection: ROUTE },
     () => Promise.resolve({ kind: 'enter' as const, messages }),
   )
 }
@@ -491,7 +497,7 @@ describe('Expert invocation', () => {
     const decision = await step(h, agent, [prompt])
     const [message, ...rest] = injected(decision, [prompt])
     expect(rest).toEqual([])
-    expect(message!.source).toEqual({ kind: 'plugin', plugin: 'expert', form: 'instructions' })
+    expect(message!.source).toEqual({ kind: 'expert-invocation', form: 'instructions' })
     const text = textOf(message!)
     expect(text).toContain('<expert name="reviewer">')
     expect(text).toContain('Review carefully.')
@@ -545,7 +551,7 @@ describe('Expert invocation', () => {
     const prompt = userMessage('@reviewer go')
     const decision = await agentEvents(h.ctx, agent).waterfall(
       'agent/pre-step',
-      { messages: [prompt], turn: 1, step: 1, signal },
+      { messages: [prompt], turn: 1, step: 1, signal, modelSelection: ROUTE },
       () => Promise.resolve({ kind: 'reject' as const, reason: 'blocked' }),
     )
     expect(decision.kind).toBe('reject')

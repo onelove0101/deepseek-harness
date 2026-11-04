@@ -30,6 +30,7 @@ import * as storagePlugin from '@deepseek-ai/dsh-storage'
 import * as storageDomainPlugin from '@deepseek-ai/dsh-storage-domain'
 import * as storageJsonPlugin from '@deepseek-ai/dsh-storage-json'
 import * as systemPromptPlugin from '@deepseek-ai/dsh-system-prompt'
+import * as nativeToolExecutorPlugin from '@deepseek-ai/dsh-tool-executor-native'
 import * as toolsPlugin from '@deepseek-ai/dsh-tools'
 import { MockAdapter, textResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import * as expertPlugin from '../src/index.ts'
@@ -51,6 +52,7 @@ const modules = new Map<string, unknown>([
   ['@deepseek-ai/dsh-session-persistence-jsonl', persistencePlugin],
   ['@deepseek-ai/dsh-system-prompt', systemPromptPlugin],
   ['@deepseek-ai/dsh-tools', toolsPlugin],
+  ['@deepseek-ai/dsh-tool-executor-native', nativeToolExecutorPlugin],
   ['@deepseek-ai/dsh-agent', agentPlugin],
   ['@deepseek-ai/dsh-agent-loop', agentLoopPlugin],
   ['@deepseek-ai/dsh-storage', storagePlugin],
@@ -152,7 +154,7 @@ function textOf(message: Pick<Message, 'content'>): string {
 function expertMessages(events: readonly SessionEvent[]): UserMessage[] {
   const found: UserMessage[] = []
   for (const event of events) {
-    if (event.type === 'user/message' && event.data.source.kind === 'plugin' && event.data.source.plugin === 'expert') {
+    if (event.type === 'user/message' && event.data.source.kind === 'expert-invocation') {
       found.push(event.data)
     }
   }
@@ -204,7 +206,7 @@ describe('expert real Loader composition', () => {
     expect(invocation).toContain('REVIEWER_SOUL: review carefully.')
     expect(invocation).toContain('CHECKLIST_BODY_FACT')
     expect(invocation).toContain('DOCUMENT_FACT: prefer short words.')
-    expect(invocations[0]!.source).toEqual({ kind: 'plugin', plugin: 'expert', form: 'instructions' })
+    expect(invocations[0]!.source).toEqual({ kind: 'expert-invocation', form: 'instructions' })
 
     // The model saw the logged snapshot, in the same request as the prompt that invoked it.
     const reviewerRequest = adapter.requests[1]!

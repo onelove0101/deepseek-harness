@@ -16,6 +16,8 @@
  */
 import { type CSSProperties, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
+import { assertNever } from '@deepseek-ai/dsh-util-values'
+import { OrganizationDialogs, type OrganizationRequest } from './OrganizationDialogs.tsx'
 import { WorkspaceDialogs } from './WorkspaceDialogs.tsx'
 import {
   AnimatedRows, HoverCardGroup, IconArchiveCheckOutlineRegular, IconArchiveOffOutlineRegular, IconArchiveOutlineRegular,
@@ -27,20 +29,44 @@ import {
 import type {
   SessionListState, SessionSearchResultItem,
 } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { FolderId, WorkspaceGroupView, WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { workspaceDisplayTitle } from '@deepseek-ai/dsh-api-workspace-controller/default-workspace'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
-import type { WorkspaceBrowserProps } from '../contract/slots.ts'
+import type { WorkspaceActionRequest, WorkspaceBrowserProps, WorkspaceEntityRequest } from '../contract/slots.ts'
 import type { ArchivedFilter, GroupNode, SessionNode, SessionOrderBy, SessionRowState } from '../tree.ts'
 import {
   deriveFlat, deriveGroups, deriveSearchResults, orderByRecency, owningGroupKey, owningParentFolder,
-  pinCurrentBlank, reconcileManualOrder, sessionMemberIds, UNGROUPED_KEY,
+  folderExpansionKey, folderMembership, pinCurrentBlank, reconcileManualOrder, sessionMemberIds, UNGROUPED_KEY, ungroupedExpansionKey,
+  workspaceExpansionKey, workspaceGroupExpansionKey,
 } from '../tree.ts'
-import { ProjectRowItem, SearchResultItem, SessionNodeItem } from './Rows.tsx'
+import { FolderRowItem, GroupRowItem, ProjectRowItem, SearchResultItem, SessionNodeItem } from './Rows.tsx'
 import { FLAT_SESSION_ORDER_KEY, type SessionGroupBy } from '../stores.ts'
 import { WorkspacePickFlow } from '../WorkspacePicker.tsx'
 import css from './WorkspaceBrowser.module.css'
+
+/** Whether a request targets the Workspace rename or delete dialog. */
+function isWorkspaceEntityRequest(request: WorkspaceActionRequest): request is WorkspaceEntityRequest {
+  return request.action === 'rename' || request.action === 'delete'
+}
+
+/** Identity of one Group or Folder dialog, so a new target remounts its draft. */
+function organizationDialogKey(request: OrganizationRequest): string {
+  switch (request.action) {
+    case 'createGroup':
+      return request.action
+    case 'renameGroup':
+    case 'deleteGroup':
+      return `${request.action}/${request.groupId}`
+    case 'createFolder':
+      return `${request.action}/${request.workspaceId}`
+    case 'renameFolder':
+    case 'deleteFolder':
+      return `${request.action}/${request.workspaceId}/${request.folderId}`
+    default:
+      return assertNever(request)
+  }
+}
 
 /**
  * Column slide length (--ds-transition-duration-slow): rail-search focus waits it out —
@@ -139,11 +165,16 @@ function useNativeDragAcceptance(active: boolean): void {
 }
 
 /** Grouping, ordering, and archived-filter menu; own open state so it resets with the wide chrome. */
-function ViewOptionsMenu({ groupBy, orderBy, archivedFilter, onGroupPick, onOrderPick, onArchivedFilterPick, t }: {
+function ViewOptionsMenu({
+  groupBy, orderBy, archivedFilter, canCreateGroup, onGroupPick, onOrderPick, onArchivedFilterPick, onCreateGroup, t,
+}: {
   groupBy: SessionGroupBy
   orderBy: SessionOrderBy
   archivedFilter: ArchivedFilter
+  /** Whether the caller may create a Workspace Group and the view shows Groups. */
+  canCreateGroup: boolean
   onGroupPick: (mode: SessionGroupBy) => void
+  onCreateGroup: () => void
   onOrderPick: (mode: SessionOrderBy) => void
   onArchivedFilterPick: (filter: ArchivedFilter) => void
   t: WorkspaceBrowserProps['t']
@@ -167,6 +198,10 @@ function ViewOptionsMenu({ groupBy, orderBy, archivedFilter, onGroupPick, onOrde
         { id: 'hide-archived', label: t('viewOptions.hideArchived'), icon: <IconArchiveOffOutlineRegular /> },
         { id: 'show-archived', label: t('viewOptions.showArchived'), icon: <IconQueueOutlineRegular /> },
         { id: 'only-archived', label: t('viewOptions.onlyArchived'), icon: <IconArchiveCheckOutlineRegular /> },
+        ...canCreateGroup ? [
+          { type: 'separator' as const, id: 'organize-separator' },
+          { id: 'create-group', label: t('group.create'), icon: <IconFolderCloseRegular /> },
+        ] : [],
       ]}
       selectedIds={[
         groupBy,
@@ -179,6 +214,7 @@ function ViewOptionsMenu({ groupBy, orderBy, archivedFilter, onGroupPick, onOrde
         else if (id === 'hide-archived') onArchivedFilterPick('default')
         else if (id === 'show-archived') onArchivedFilterPick('show')
         else if (id === 'only-archived') onArchivedFilterPick('only')
+        else if (id === 'create-group') onCreateGroup()
         setOpen(false)
       }}
       align="end"
@@ -254,7 +290,7 @@ type SessionTreeProps = Pick<
   WorkspaceBrowserProps,
   'useSessionStatus' | 'startSession' | 'open' | 'openSessionMenu' | 'openWorkspaceMenu' | 'useContextMenuTarget' | 'useContextMenu'
   | 'insertWorkspaceBefore' | 't' | 'usePanelInfo'
-  | 'useRemoteAccess' | 'useSessionAccess' | 'useWorkspaceAccess'
+  | 'useRemoteAccess' | 'useSessionAccess' | 'useWorkspaceAccess' | 'openGroupMenu' | 'openFolderMenu'
 > & PropsRenderSlots<
   | 'sidebar.workspaces.session.row.action'
   | 'sidebar.session.row.trailing'
@@ -268,6 +304,10 @@ type SessionTreeProps = Pick<
   home?: string | undefined
   /** Workspaces in Host group order with browser-projected Session order. */
   workspaces: readonly WorkspaceView[]
+  /** Workspaces outside every Group, in display order. */
+  topLevelWorkspaceIds: readonly WorkspaceId[]
+  /** Durable Workspace Groups in display order. */
+  workspaceGroups: readonly WorkspaceGroupView[]
   /** Browser-projected order for Sessions outside every Workspace. */
   ungroupedSessionIds: readonly SessionId[]
   /** Whether the current Workspace stream has a complete Host baseline. */
@@ -312,9 +352,10 @@ function EmptySessions({ rowState, onLeaveArchivedOnly, t }: Pick<SessionTreePro
 
 /** The scrolling session tree; unmounting drops the sessions subscription and the session watermarks. */
 function SessionTree({
-  list, useSessionStatus, startSession, open, workspaces, ungroupedSessionIds,
+  list, useSessionStatus, startSession, open, workspaces, ungroupedSessionIds, topLevelWorkspaceIds, workspaceGroups,
+  openGroupMenu, openFolderMenu, useRemoteAccess,
   rowState, onLeaveArchivedOnly,
-  workspaceReady, animationResetKey, usePanelInfo, useRemoteAccess, useSessionAccess, useWorkspaceAccess,
+  workspaceReady, animationResetKey, usePanelInfo, useSessionAccess, useWorkspaceAccess,
   onSessionRenameRequest,
   renderSlot, openSessionMenu, openWorkspaceMenu, useContextMenuTarget, useContextMenu,
   insertWorkspaceBefore,
@@ -344,10 +385,33 @@ function SessionTree({
   const currentGroup = current === undefined || !workspaceReady
     ? undefined
     : owningGroupKey(workspaces, current)
+  // Path nesting keys expansion by bare Workspace id; the Group and Folder hierarchy uses namespaced keys.
+  const expansionKeyOf = useCallback((groupKey: string): string => {
+    if (groupKey === UNGROUPED_KEY) return nestWorkspaces ? UNGROUPED_KEY : ungroupedExpansionKey()
+    return nestWorkspaces ? groupKey : workspaceExpansionKey(groupKey as WorkspaceId)
+  }, [nestWorkspaces])
+  /** Expand every container above one Session the user is looking at, unless the user already chose. */
+  const exposeSession = useCallback((sessionId: SessionId | undefined, force: boolean): void => {
+    if (sessionId === undefined) return
+    const opens = (key: string): void => {
+      if (force ? groupExpansion[key] !== true : !Object.hasOwn(groupExpansion, key)) setGroupExpanded(key, true)
+    }
+    const owner = workspaces.find(workspace => workspace.sessionIds.includes(sessionId))
+    if (owner === undefined) {
+      opens(expansionKeyOf(UNGROUPED_KEY))
+      return
+    }
+    opens(expansionKeyOf(owner.workspaceId))
+    if (nestWorkspaces) return
+    const folder = owner.folders.find(candidate => candidate.sessionIds.includes(sessionId))
+    if (folder !== undefined) opens(folderExpansionKey(owner.workspaceId, folder.folderId))
+    const parentGroup = workspaceGroups.find(candidate => candidate.workspaceIds.includes(owner.workspaceId))
+    if (parentGroup !== undefined) opens(workspaceGroupExpansionKey(parentGroup.groupId))
+  }, [expansionKeyOf, groupExpansion, nestWorkspaces, setGroupExpanded, workspaceGroups, workspaces])
   useEffect(() => {
-    if (current === undefined || currentGroup === undefined || Object.hasOwn(groupExpansion, currentGroup)) return
-    setGroupExpanded(currentGroup, true)
-  }, [current, currentGroup, setGroupExpanded, groupExpansion])
+    if (current === undefined || currentGroup === undefined || !workspaceReady) return
+    exposeSession(current, false)
+  }, [current, currentGroup, workspaceReady, exposeSession])
   const parents = useMemo(() => {
     if (!nestWorkspaces) return new Map<string, WorkspaceId | undefined>()
     const keysByPath = new Map(workspaces.map(workspace => [workspace.path, workspace.workspaceId]))
@@ -367,8 +431,9 @@ function SessionTree({
   const expandedGroups = useMemo(() => {
     const ancestorKeys = new Set<string | undefined>(parents.values())
     return [...workspaces.map(workspace => workspace.workspaceId), UNGROUPED_KEY]
-      .filter(key => groupExpansion[key] ?? ancestorKeys.has(key))
-  }, [groupExpansion, parents, workspaces])
+      // Views saved before the Group hierarchy keyed Workspace expansion by bare id; they still read as a choice.
+      .filter(key => groupExpansion[expansionKeyOf(key)] ?? groupExpansion[key] ?? ancestorKeys.has(key))
+  }, [expansionKeyOf, groupExpansion, parents, workspaces])
   const groups = useMemo(
     () => deriveGroups(list, workspaces, rowState, statuses, {
       expandedGroups,
@@ -378,11 +443,13 @@ function SessionTree({
   )
   useEffect(() => {
     for (let key = revealGroup; key !== undefined; key = parents.get(key)) {
-      if (groupExpansion[key] === false || (key === revealGroup && groupExpansion[key] !== true)) {
-        setGroupExpanded(key, true)
+      const expansionKey = expansionKeyOf(key)
+      if (groupExpansion[expansionKey] === false || (key === revealGroup && groupExpansion[expansionKey] !== true)) {
+        setGroupExpanded(expansionKey, true)
       }
     }
-  }, [groupExpansion, parents, revealGroup, setGroupExpanded])
+    if (revealGroup !== undefined) exposeSession(revealSessionId, true)
+  }, [expansionKeyOf, exposeSession, groupExpansion, parents, revealGroup, revealSessionId, setGroupExpanded])
   const baselines = new Map(groups.map(group => [group.key, Math.max(SESSION_WATERMARK_BASE, requiredWatermark(
     group.sessions,
     current,
@@ -427,6 +494,9 @@ function SessionTree({
     const nextOrder = sessionDragOrder(accountSessionIds, renderedSessions, activeDrag, over)
     if (nextOrder !== undefined) setSessionOrder(activeDrag.accountKey, nextOrder)
   }
+  // Group members keep the order their Group stores, so only top-level Workspaces reorder by drag.
+  const topLevelSet = useMemo(() => new Set<string>(topLevelWorkspaceIds), [topLevelWorkspaceIds])
+  const reorderable = (workspaceId: string): boolean => nestWorkspaces || topLevelSet.has(workspaceId)
   const commitWorkspaceDrag = (
     activeDrag: WorkspaceDragState,
     over: NonNullable<WorkspaceDragState['over']>,
@@ -435,7 +505,8 @@ function SessionTree({
     workspaceDropCommitted.current = true
     setWorkspaceDrag(null)
     const owner = parents.get(activeDrag.workspaceId)
-    const siblings = workspaces.filter(workspace => parents.get(workspace.workspaceId) === owner)
+    const siblings = workspaces.filter(workspace =>
+      parents.get(workspace.workspaceId) === owner && reorderable(workspace.workspaceId))
     const rowIndex = siblings.findIndex(workspace => workspace.workspaceId === over.id)
     if (rowIndex === -1) return
     const anchor = over.half === 'before' ? over.id : siblings[rowIndex + 1]?.workspaceId
@@ -464,28 +535,112 @@ function SessionTree({
     return children
   }, [groups, parents])
   const rootGroups = childrenByParent.get(undefined) ?? []
-  const workspaceDropAtListStart = rootGroups[0]?.workspaceId !== undefined
+  const workspaceDropAtListStart = (nestWorkspaces || workspaceGroups.length === 0)
+    && rootGroups[0]?.workspaceId !== undefined
     && workspaceDrag?.over?.id === rootGroups[0].workspaceId
     && workspaceDrag.over.half === 'before'
 
-  const rowKeys: string[] = groups.length === 0 ? ['empty'] : []
+  const rowKeys: string[] = []
+  const renderSession = (node: SessionNode, group: GroupNode, draggable: boolean): ReactNode => {
+  // Session drag never leaves its browser-local account, and pinned
+  // rows reorder only within their leading pinned block.
+    const sameGroupDrag = drag !== null && drag.accountKey === group.key
+    const compatibleTarget = sameGroupDrag && drag.pinned === node.pinned
+    const normalizeHalf = (half: 'before' | 'after'): 'before' | 'after' =>
+      node.blank ? 'after' : half
+    const dragProps = !draggable ? undefined : {
+      start: () => {
+        sessionDropCommitted.current = false
+        setDrag({ accountKey: group.key, sessionId: node.id, pinned: node.pinned, over: null })
+      },
+      active: compatibleTarget,
+      marker: sameGroupDrag && drag.over?.id === node.id ? drag.over.half : null,
+      hover: (half: 'before' | 'after') => {
+      /* v8 ignore next -- narrowing guard: Rows gates hover on `active`, which is false while the drag state is null. */
+        setDrag(d => (d === null ? d : {
+          ...d, over: { id: node.id, half: normalizeHalf(half) },
+        }))
+      },
+      drop: (half: 'before' | 'after') => {
+      /* v8 ignore next -- narrowing guard: Rows gates drop on `active`, which is false while the drag state is null. */
+        if (drag === null) return
+        commitSessionDrag(drag, { id: node.id, half: normalizeHalf(half) })
+      },
+      end: () => {
+        if (drag?.over !== null && drag?.over !== undefined) commitSessionDrag(drag, drag.over)
+        else setDrag(null)
+        sessionDropCommitted.current = false
+      },
+    }
+    return (
+      <SessionNodeItem
+        key={node.id}
+        node={node}
+        currentId={current}
+        now={now}
+        onOpen={open}
+        onRenameRequest={onSessionRenameRequest}
+        renderSlot={renderSlot}
+        openSessionMenu={openSessionMenu} useContextMenu={useContextMenu}
+        useContextMenuTarget={useContextMenuTarget}
+        onReveal={node.id === revealSessionId && group.key === revealGroup
+          ? () => { onSessionRevealed(node.id) }
+          : undefined}
+        drag={dragProps}
+        home={home}
+        useSessionAccess={useSessionAccess}
+        t={t}
+      />
+    )
+  }
   const renderGroup = (group: GroupNode, depth: number): ReactNode => {
     const workspaceId = group.workspaceId
     const children = childrenByParent.get(group.key) ?? []
     const compatibleDrag = workspaceDrag !== null && parents.get(workspaceDrag.workspaceId) === parents.get(group.key)
+      && reorderable(workspaceDrag.workspaceId) && reorderable(group.key)
+    const workspaceView = workspaceId === undefined || nestWorkspaces
+      ? undefined
+      : workspaces.find(candidate => candidate.workspaceId === workspaceId)
+    const filing = workspaceView === undefined ? new Map<SessionId, FolderId>() : folderMembership(workspaceView)
+    // Foldered Sessions render under their Folder row; the watermark bounds only the Workspace root.
+    const rootSessions = filing.size === 0 ? group.sessions : group.sessions.filter(node => !filing.has(node.id))
     const watermark = sessionWatermarks[group.key] ?? SESSION_WATERMARK_BASE
-    const collapsed = watermarkRows(group.sessions, baselines.get(group.key) ?? SESSION_WATERMARK_BASE)
-    const visible = watermarkRows(group.sessions, watermark)
+    const collapsed = watermarkRows(rootSessions, baselines.get(group.key) ?? SESSION_WATERMARK_BASE)
+    const visible = watermarkRows(rootSessions, watermark)
     const sessionsExpanded = visible.hiddenCount === 0
     rowKeys.push(`workspace:${group.key}`)
     const childRows = group.expanded ? children.map(child => renderGroup(child, depth + 1)) : []
     const sessions = visible.rows
+    const folderRows = group.expanded && workspaceView !== undefined
+      ? workspaceView.folders.flatMap((folder) => {
+        const members = group.sessions.filter(node => filing.get(node.id) === folder.folderId)
+        // The archived-only view lists archives, not the Folder inventory.
+        if (rowState.archivedFilter === 'only' && members.length === 0) return []
+        const folderKey = folderExpansionKey(workspaceView.workspaceId, folder.folderId)
+        const folderExpanded = groupExpansion[folderKey] === true
+        rowKeys.push(`folder:${folder.folderId}`)
+        if (folderExpanded) for (const node of members) rowKeys.push(`session:${node.id}`)
+        return [(
+          <div key={`folder:${folder.folderId}`} role="group" style={{ '--dsh-workspace-indent': `${(depth + 1) * 12}px` } as CSSProperties}>
+            <FolderRowItem
+              workspaceId={workspaceView.workspaceId} folderId={folder.folderId} title={folder.title}
+              expanded={folderExpanded} containsCurrent={current !== undefined && members.some(node => node.id === current)}
+              sessionCount={members.length}
+              onToggle={() => { setGroupExpanded(folderKey, !folderExpanded) }}
+              openFolderMenu={openFolderMenu} useContextMenu={useContextMenu} useContextMenuTarget={useContextMenuTarget}
+              useWorkspaceAccess={useWorkspaceAccess} t={t}
+            />
+            {folderExpanded && members.map(node => renderSession(node, group, false))}
+          </div>
+        )]
+      })
+      : []
     for (const node of sessions) rowKeys.push(`session:${node.id}`)
     if (collapsed.hiddenCount > 0) rowKeys.push(`overflow:${group.key}`)
     const workspaceMarker = workspaceId !== undefined && workspaceDrag?.over?.id === workspaceId
       ? workspaceDrag.over.half
       : null
-    const workspaceDragProps = workspaceId === undefined ? undefined : {
+    const workspaceDragProps = workspaceId === undefined || !reorderable(workspaceId) ? undefined : {
       start: () => {
         workspaceDropCommitted.current = false
         setWorkspaceDrag({ workspaceId, over: null })
@@ -562,11 +717,11 @@ function SessionTree({
           t={t}
           onToggle={() => {
             if (group.expanded) dropWatermarks(key => withinGroup(key, group.key))
-            setGroupExpanded(group.key, !group.expanded)
+            setGroupExpanded(expansionKeyOf(group.key), !group.expanded)
           }}
           onCreate={() => {
             if (group.workspaceId !== undefined) {
-              setGroupExpanded(group.key, true)
+              setGroupExpanded(expansionKeyOf(group.key), true)
               startSession(group.workspaceId)
             }
           }}
@@ -577,58 +732,8 @@ function SessionTree({
             {childRows}
           </div>
         )}
-        {sessions.map((node) => {
-        // Session drag never leaves its browser-local account, and pinned
-        // rows reorder only within their leading pinned block.
-          const sameGroupDrag = drag !== null && drag.accountKey === group.key
-          const compatibleTarget = sameGroupDrag && drag.pinned === node.pinned
-          const normalizeHalf = (half: 'before' | 'after'): 'before' | 'after' =>
-            node.blank ? 'after' : half
-          const dragProps = {
-            start: () => {
-              sessionDropCommitted.current = false
-              setDrag({ accountKey: group.key, sessionId: node.id, pinned: node.pinned, over: null })
-            },
-            active: compatibleTarget,
-            marker: sameGroupDrag && drag.over?.id === node.id ? drag.over.half : null,
-            hover: (half: 'before' | 'after') => {
-            /* v8 ignore next -- narrowing guard: Rows gates hover on `active`, which is false while the drag state is null. */
-              setDrag(d => (d === null ? d : {
-                ...d, over: { id: node.id, half: normalizeHalf(half) },
-              }))
-            },
-            drop: (half: 'before' | 'after') => {
-            /* v8 ignore next -- narrowing guard: Rows gates drop on `active`, which is false while the drag state is null. */
-              if (drag === null) return
-              commitSessionDrag(drag, { id: node.id, half: normalizeHalf(half) })
-            },
-            end: () => {
-              if (drag?.over !== null && drag?.over !== undefined) commitSessionDrag(drag, drag.over)
-              else setDrag(null)
-              sessionDropCommitted.current = false
-            },
-          }
-          return (
-            <SessionNodeItem
-              key={node.id}
-              node={node}
-              currentId={current}
-              now={now}
-              onOpen={open}
-              onRenameRequest={onSessionRenameRequest}
-              renderSlot={renderSlot}
-              openSessionMenu={openSessionMenu} useContextMenu={useContextMenu}
-              useContextMenuTarget={useContextMenuTarget}
-              onReveal={node.id === revealSessionId && group.key === revealGroup
-                ? () => { onSessionRevealed(node.id) }
-                : undefined}
-              drag={dragProps}
-              home={home}
-              useSessionAccess={useSessionAccess}
-              t={t}
-            />
-          )
-        })}
+        {folderRows}
+        {sessions.map(node => renderSession(node, group, true))}
         {collapsed.hiddenCount > 0 && (
           <button
             type="button"
@@ -656,7 +761,51 @@ function SessionTree({
     )
   }
 
-  const groupRows = rootGroups.map(group => renderGroup(group, 0))
+  /** Group sections, then top-level Workspaces, then the Ungrouped bucket, in the durable layout order. */
+  function hierarchyRows(): ReactNode[] {
+    const sections = new Map(groups.map(group => [group.key, group]))
+    const placed = new Set<string>()
+    const rows: ReactNode[] = []
+    for (const workspaceGroup of workspaceGroups) {
+      const members = workspaceGroup.workspaceIds.flatMap((id) => {
+        const section = sections.get(id)
+        return section === undefined || placed.has(id) ? [] : [section]
+      })
+      // The archived-only view lists archives, not the Group inventory.
+      if (rowState.archivedFilter === 'only' && members.length === 0) continue
+      for (const member of members) placed.add(member.key)
+      const expanded = groupExpansion[workspaceGroupExpansionKey(workspaceGroup.groupId)] === true
+      rowKeys.push(`group:${workspaceGroup.groupId}`)
+      rows.push(
+        <div key={`group:${workspaceGroup.groupId}`} className={css.groupSection}>
+          <GroupRowItem
+            groupId={workspaceGroup.groupId} title={workspaceGroup.title} expanded={expanded}
+            containsCurrent={current !== undefined && members.some(member =>
+              workspaces.find(workspace => workspace.workspaceId === member.workspaceId)?.sessionIds.includes(current) === true)}
+            workspaceCount={members.length}
+            onToggle={() => { setGroupExpanded(workspaceGroupExpansionKey(workspaceGroup.groupId), !expanded) }}
+            openGroupMenu={openGroupMenu} useContextMenu={useContextMenu} useContextMenuTarget={useContextMenuTarget}
+            useRemoteAccess={useRemoteAccess} t={t}
+          />
+          {expanded && <div role="group">{members.map(member => renderGroup(member, 1))}</div>}
+        </div>,
+      )
+    }
+    const topLevel = topLevelWorkspaceIds.flatMap((id) => {
+      const section = sections.get(id)
+      return section === undefined || placed.has(id) ? [] : [section]
+    })
+    for (const section of topLevel) placed.add(section.key)
+    // A projection that lags the layout still shows every Workspace and the Ungrouped bucket.
+    const remaining = groups.filter(section => !placed.has(section.key) && section.key !== UNGROUPED_KEY)
+    const ungrouped = sections.get(UNGROUPED_KEY)
+    for (const section of [...topLevel, ...remaining, ...ungrouped === undefined ? [] : [ungrouped]]) {
+      rows.push(renderGroup(section, 0))
+    }
+    return rows
+  }
+  const groupRows = nestWorkspaces ? rootGroups.map(group => renderGroup(group, 0)) : hierarchyRows()
+  if (groupRows.length === 0) rowKeys.push('empty')
   return (
     <HoverCardGroup className={clsx(css.treeBody, css.wide)}>
       {workspaceDropAtListStart && <span className={css.listTopDropIndicator} aria-hidden="true" />}
@@ -668,7 +817,7 @@ function SessionTree({
         ready={list.phase === 'ready' && workspaceReady && !nativeDragActive}
         resetKey={JSON.stringify([animationResetKey, watermarkMotionKey])}
       >
-        {groups.length === 0 && (
+        {groupRows.length === 0 && (
           <EmptySessions rowState={rowState} onLeaveArchivedOnly={onLeaveArchivedOnly} t={t} />
         )}
         {groupRows}
@@ -911,7 +1060,8 @@ export function WorkspaceBrowser({
   requestSessionRename,
   notifyArchivedNotOpenable,
   renameWorkspace, useWorkspaceActionRequest, settleWorkspaceAction,
-  deleteWorkspace,
+  deleteWorkspace, createGroup, renameGroup, deleteGroup, createFolder, renameFolder, deleteFolder,
+  openGroupMenu, openFolderMenu,
   insertWorkspaceBefore,
   unarchiveSession,
   createWorkspace,
@@ -946,6 +1096,10 @@ export function WorkspaceBrowser({
     })),
     [storedWorkspaces, defaultWorkspaceName],
   )
+  const topLevelWorkspaceIds = useWorkspaces(state => state.topLevelWorkspaceIds)
+  const workspaceGroups = useWorkspaces(state => state.groups)
+  const canCreateGroup = useRemoteAccess('workspace/createGroup')
+  const [creatingGroup, setCreatingGroup] = useState(false)
   const workspacePhase = useWorkspaces(state => state.phase)
   const workspaceStreamState = useWorkspaces(state => state.state)
   const archivedSessionIds = useWorkspaces(state => state.archivedSessionIds)
@@ -1031,8 +1185,17 @@ export function WorkspaceBrowser({
       UNGROUPED_KEY,
       FLAT_SESSION_ORDER_KEY,
       ...workspaces.map(workspace => workspace.workspaceId),
+    ], [
+      UNGROUPED_KEY,
+      ungroupedExpansionKey(),
+      ...workspaces.flatMap(workspace => [
+        workspace.workspaceId,
+        workspaceExpansionKey(workspace.workspaceId),
+        ...workspace.folders.map(folder => folderExpansionKey(workspace.workspaceId, folder.folderId)),
+      ]),
+      ...workspaceGroups.map(group => workspaceGroupExpansionKey(group.groupId)),
     ])
-  }, [actions.retainAccountKeys, workspacePhase, workspaces])
+  }, [actions.retainAccountKeys, workspaceGroups, workspacePhase, workspaces])
   useEffect(() => {
     if (list.phase !== 'ready' || workspaceReady || orderBy !== 'manual' || currentBlank === undefined) return
     // A first prompt can end blank pinning before the Workspace baseline arrives.
@@ -1114,7 +1277,13 @@ export function WorkspaceBrowser({
   // states; the menu anchors on this button).
   const wsPickerOpen = shortcutState.addRequested
   const wsPlusRef = useRef<HTMLButtonElement>(null)
-  const workspaceActionRequest = useWorkspaceActionRequest(value => value)
+  const hostActionRequest = useWorkspaceActionRequest(value => value)
+  // The create-Group dialog opens from this browser's own menu; every other request arrives from the Host menus.
+  const dialogRequest: WorkspaceActionRequest | null = hostActionRequest ?? (creatingGroup ? { action: 'createGroup' } : null)
+  const settleDialog = (): void => {
+    setCreatingGroup(false)
+    settleWorkspaceAction()
+  }
 
   const openSearchResult = (sessionId: SessionId): void => {
     if (archivedSessionIds.includes(sessionId)) {
@@ -1290,7 +1459,9 @@ export function WorkspaceBrowser({
               groupBy={groupBy}
               orderBy={orderBy}
               archivedFilter={archivedFilter}
+              canCreateGroup={groupBy === 'workspace' && canCreateGroup}
               onGroupPick={actions.setGroupBy}
+              onCreateGroup={() => { setCreatingGroup(true) }}
               onOrderPick={(mode) => { actions.setOrderBy(mode, activeSessionOrders) }}
               onArchivedFilterPick={actions.setArchivedFilter}
               t={t}
@@ -1413,6 +1584,10 @@ export function WorkspaceBrowser({
                 openWorkspaceMenu={openWorkspaceMenu}
                 useContextMenuTarget={useContextMenuTarget}
                 workspaces={orderedWorkspaces}
+                topLevelWorkspaceIds={topLevelWorkspaceIds}
+                workspaceGroups={workspaceGroups}
+                openGroupMenu={openGroupMenu}
+                openFolderMenu={openFolderMenu}
                 ungroupedSessionIds={orderedUngroupedSessionIds}
                 workspaceReady={workspaceReady}
                 nestWorkspaces={groupBy === 'workspace-tree'}
@@ -1433,9 +1608,16 @@ export function WorkspaceBrowser({
             ))}
       </div>
 
-      {workspaceActionRequest !== null && <WorkspaceDialogs key={`${workspaceActionRequest.action}/${workspaceActionRequest.workspaceId}`}
-        request={workspaceActionRequest} workspaces={workspaces} renameWorkspace={renameWorkspace} deleteWorkspace={deleteWorkspace}
-        settleWorkspaceAction={settleWorkspaceAction} t={t} />}
+      {dialogRequest !== null && (isWorkspaceEntityRequest(dialogRequest)
+        ? <WorkspaceDialogs key={`${dialogRequest.action}/${dialogRequest.workspaceId}`}
+          request={dialogRequest} workspaces={workspaces} renameWorkspace={renameWorkspace} deleteWorkspace={deleteWorkspace}
+          settleWorkspaceAction={settleDialog} t={t} />
+        : <OrganizationDialogs key={organizationDialogKey(dialogRequest)}
+          request={dialogRequest} workspaces={workspaces} groups={workspaceGroups}
+          expandWorkspace={(workspaceId) => { actions.setGroupExpanded(workspaceExpansionKey(workspaceId), true) }}
+          createGroup={createGroup} renameGroup={renameGroup} deleteGroup={deleteGroup}
+          createFolder={createFolder} renameFolder={renameFolder} deleteFolder={deleteFolder}
+          settleWorkspaceAction={settleDialog} t={t} />)}
     </div>
   )
 }

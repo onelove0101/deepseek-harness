@@ -6,7 +6,7 @@
 import {
   type SessionListState, type SessionSearchResultItem, type SessionSummary,
 } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { FolderId, WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type {
   SessionStatusSnapshot,
 } from '@deepseek-ai/dsh-client-ui-session/client'
@@ -16,6 +16,20 @@ import { workspaceTitleOf } from '@deepseek-ai/dsh-util-workspace-path'
 
 /** Group key for Sessions outside every Workspace. */
 export const UNGROUPED_KEY = ''
+
+/**
+ * Resolve the Workspace browser group that owns one Session.
+ * @param workspaces - authoritative Workspace membership.
+ * @param sessionId - Session whose browser group is required.
+ * @returns owning Workspace id, or {@link UNGROUPED_KEY} when no Workspace accounts for it.
+ */
+export function owningGroupKey(
+  workspaces: readonly WorkspaceView[],
+  sessionId: SessionId,
+): string {
+  return (workspaces.find(workspace => workspace.sessionIds.includes(sessionId))
+    ?.workspaceId as string | undefined) ?? UNGROUPED_KEY
+}
 
 /** Pending interaction kinds with dedicated Workspace-row presentation. */
 export type SessionPendingInteractionStatus = 'approval' | 'plan-review' | 'question'
@@ -52,6 +66,25 @@ export interface SessionNode {
 /** Session order selected by the Workspace browser. */
 export type SessionOrderBy = 'manual' | 'updated'
 
+/** One workspace group section: header row facts + visible top-level session rows. */
+export interface GroupNode {
+  /** Group key: the workspace id or {@link UNGROUPED_KEY}. */
+  key: string
+  /** Backing Workspace id; absent only for the ungrouped bucket. */
+  workspaceId: WorkspaceId | undefined
+  cwd: string | undefined
+  /** Workspace creation time (epoch ms); absent only for the ungrouped bucket. */
+  createdAt: number | undefined
+  label: string
+  /** Total visible sessions in the group. */
+  sessionCount: number
+  expanded: boolean
+  /** The group contains the selected session (active folder tint; supplied here so the renderer never scans). */
+  containsCurrent: boolean
+  /** Visible session rows (empty while the group is folded). */
+  sessions: readonly SessionNode[]
+}
+
 /** One flat search row combining list metadata with an optional content match. */
 export interface SearchResultNode {
   id: SessionId
@@ -80,6 +113,15 @@ export interface TreeView {
   expandedGroups: readonly string[]
   /** Browser-local order for Sessions without a backing Workspace account. */
   ungroupedOrder?: readonly string[]
+}
+
+interface Group {
+  key: string
+  workspaceId: WorkspaceId | undefined
+  cwd: string | undefined
+  createdAt: number | undefined
+  label: string
+  sessions: SessionSummary[]
 }
 
 /**
@@ -245,6 +287,18 @@ function sessionTitle(session: SessionSummary): string {
   return session.blank ? '' : (session.title?.trim() ?? '')
 }
 
+/** Build one group without projecting session lineage into presentation. */
+function buildGroup(
+  key: string,
+  workspaceId: WorkspaceId | undefined,
+  cwd: string | undefined,
+  createdAt: number | undefined,
+  label: string,
+  members: readonly SessionSummary[],
+): Group {
+  return { key, workspaceId, cwd, createdAt, label, sessions: [...members] }
+}
+
 /** Apply a stored Ungrouped order and append newly loose Sessions by recency. */
 function orderedUngrouped(
   members: readonly SessionSummary[],
@@ -407,6 +461,22 @@ export function deriveGroups(
 }
 
 /**
+ * Resolve which Folder holds each Session of one Workspace.
+ * @param workspace - Workspace whose Folder membership is read.
+ * @returns Session-to-Folder map; stale ids and duplicate filings are dropped, the first Folder wins.
+ */
+export function folderMembership(workspace: WorkspaceView): ReadonlyMap<SessionId, FolderId> {
+  const owned = new Set(workspace.sessionIds)
+  const filing = new Map<SessionId, FolderId>()
+  for (const folder of workspace.folders) {
+    for (const id of folder.sessionIds) {
+      if (owned.has(id) && !filing.has(id)) filing.set(id, folder.folderId)
+    }
+  }
+  return filing
+}
+
+/**
  * Stable browser-local expansion key for one durable Workspace Group.
  * @param groupId - Group identity.
  * @returns the expansion key.
@@ -440,211 +510,6 @@ export function folderExpansionKey(workspaceId: WorkspaceId, folderId: string): 
  */
 export function ungroupedExpansionKey(): string {
   return 'workspace-ungrouped'
-}
-
-/** A durable Workspace Group branch in the browser hierarchy. */
-export interface WorkspaceGroupTreeNode {
-  readonly kind: 'group'
-  readonly key: string
-  readonly groupId: string
-  readonly title: string
-  readonly expanded: boolean
-  readonly containsCurrent: boolean
-  readonly workspaces: readonly WorkspaceTreeNode[]
-}
-
-/** A Workspace-local root branch for Sessions that are not filed in a Folder. */
-export interface WorkspaceRootTreeNode {
-  readonly kind: 'root'
-  readonly key: string
-  readonly expanded: boolean
-  readonly containsCurrent: boolean
-  readonly sessionCount: number
-  readonly sessions: readonly SessionNode[]
-}
-
-/** A durable logical Session Folder branch. */
-export interface WorkspaceFolderTreeNode {
-  readonly kind: 'folder'
-  readonly key: string
-  readonly folderId: string
-  readonly title: string
-  readonly expanded: boolean
-  readonly containsCurrent: boolean
-  readonly sessionCount: number
-  readonly sessions: readonly SessionNode[]
-}
-
-/** A filesystem-backed Workspace branch in the browser hierarchy. */
-export interface WorkspaceTreeNode {
-  readonly kind: 'workspace'
-  readonly key: string
-  readonly workspace: WorkspaceView
-  readonly expanded: boolean
-  readonly containsCurrent: boolean
-  readonly sessionCount: number
-  readonly root: WorkspaceRootTreeNode
-  readonly folders: readonly WorkspaceFolderTreeNode[]
-}
-
-/** Synthetic branch for Sessions outside every Workspace. */
-export interface UngroupedTreeNode {
-  readonly kind: 'ungrouped'
-  readonly key: string
-  readonly expanded: boolean
-  readonly containsCurrent: boolean
-  readonly sessionCount: number
-  readonly sessions: readonly SessionNode[]
-}
-
-/** One branch shown in Workspace grouping mode. */
-export type WorkspaceHierarchyNode = WorkspaceGroupTreeNode | WorkspaceTreeNode | UngroupedTreeNode
-
-/** Structural layout consumed by the hierarchical browser derivation. */
-export interface WorkspaceHierarchyLayout {
-  readonly topLevelWorkspaceIds: readonly WorkspaceId[]
-  readonly groups: readonly {
-    readonly groupId: string
-    readonly title: string
-    readonly workspaceIds: readonly WorkspaceId[]
-  }[]
-}
-
-function visibleMembers(
-  ids: readonly SessionId[],
-  list: SessionListState,
-  archived: ReadonlySet<SessionId>,
-): SessionSummary[] {
-  return ids.flatMap((id) => {
-    const summary = list.byId[id]
-    return summary === undefined || !sessionVisible(summary, mainSessionId(list), archived, 'default') ? [] : [summary]
-  })
-}
-
-function workspaceTreeNode(
-  workspace: WorkspaceView,
-  list: SessionListState,
-  archived: ReadonlySet<SessionId>,
-  expanded: ReadonlySet<string>,
-  _descendants: ReadonlyMap<SessionId, SubagentDescendantSummary>,
-  _pendingInteractions: SessionPendingInteractions,
-): WorkspaceTreeNode {
-  const foldered = new Set<SessionId>()
-  const folders = workspace.folders.map((folder) => {
-    const validIds = folder.sessionIds.filter(id => workspace.sessionIds.includes(id) && !foldered.has(id))
-    for (const id of validIds) {
-      foldered.add(id)
-    }
-    const members = visibleMembers(validIds, list, archived)
-    const key = folderExpansionKey(workspace.workspaceId, folder.folderId)
-    const isExpanded = expanded.has(key)
-    return {
-      kind: 'folder' as const,
-      key,
-      folderId: folder.folderId,
-      title: folder.title,
-      expanded: isExpanded,
-      containsCurrent: mainSessionId(list) !== undefined && members.some(member => member.id === mainSessionId(list)),
-      sessionCount: members.length,
-      sessions: isExpanded ? members.map(member => sessionNode(member, list, new Map(), new Set(), archived)) : [],
-    }
-  })
-  const rootMembers = visibleMembers(workspace.sessionIds.filter(id => !foldered.has(id)), list, archived)
-  const rootKey = workspaceExpansionKey(workspace.workspaceId)
-  const rootExpanded = expanded.has(rootKey)
-  const currentInWorkspace = mainSessionId(list) !== undefined && workspace.sessionIds.includes(mainSessionId(list))
-  return {
-    kind: 'workspace',
-    key: rootKey,
-    workspace,
-    expanded: rootExpanded,
-    containsCurrent: currentInWorkspace,
-    sessionCount: rootMembers.length + folders.reduce((count, folder) => count + folder.sessionCount, 0),
-    root: {
-      kind: 'root',
-      key: rootKey,
-      expanded: rootExpanded,
-      containsCurrent: rootMembers.some(member => member.id === mainSessionId(list)),
-      sessionCount: rootMembers.length,
-      sessions: rootExpanded ? rootMembers.map(member => sessionNode(member, list, new Map(), new Set(), archived)) : [],
-    },
-    folders,
-  }
-}
-
-/**
- * Derive durable Workspace Groups, Workspaces, Workspace roots, Folder rows,
- * and the synthetic ungrouped branch from one complete controller layout.
- * @param list - current Session list, including the selected Session and summaries.
- * @param workspaces - authoritative Workspace views, including Folder membership.
- * @param layout - authoritative Workspace placement and Group order.
- * @param archivedSessionIds - Sessions hidden from the hierarchy.
- * @param pendingInteractions - pending interaction markers by Session.
- * @param view - browser-local expansion and ungrouped order.
- * @returns hierarchy rows in their durable display order.
- */
-export function deriveWorkspaceHierarchy(
-  list: SessionListState,
-  workspaces: readonly WorkspaceView[],
-  layout: WorkspaceHierarchyLayout,
-  archivedSessionIds: readonly SessionId[],
-  pendingInteractions: SessionPendingInteractions,
-  view: TreeView,
-): WorkspaceHierarchyNode[] {
-  const archived = new Set(archivedSessionIds)
-  const expanded = new Set(view.expandedGroups)
-  const descendants = indexSubagentDescendants(list.byId)
-  const byId = new Map(workspaces.map(workspace => [workspace.workspaceId, workspace]))
-  const placed = new Set<WorkspaceId>()
-  const hierarchy: WorkspaceHierarchyNode[] = []
-  for (const group of layout.groups) {
-    const branches: WorkspaceTreeNode[] = []
-    for (const workspaceId of group.workspaceIds) {
-      const workspace = byId.get(workspaceId)
-      if (workspace === undefined || placed.has(workspaceId)) {
-        continue
-      }
-      placed.add(workspaceId)
-      branches.push(workspaceTreeNode(workspace, list, archived, expanded, descendants, pendingInteractions))
-    }
-    const key = workspaceGroupExpansionKey(group.groupId)
-    hierarchy.push({
-      kind: 'group',
-      key,
-      groupId: group.groupId,
-      title: group.title,
-      expanded: expanded.has(key),
-      containsCurrent: branches.some(branch => branch.containsCurrent),
-      workspaces: expanded.has(key) ? branches : [],
-    })
-  }
-  for (const workspaceId of layout.topLevelWorkspaceIds) {
-    const workspace = byId.get(workspaceId)
-    if (workspace === undefined || placed.has(workspaceId)) {
-      continue
-    }
-    placed.add(workspaceId)
-    hierarchy.push(workspaceTreeNode(workspace, list, archived, expanded, descendants, pendingInteractions))
-  }
-  const accounted = new Set<SessionId>(workspaces.flatMap(workspace => workspace.sessionIds))
-  const loose = list.ids
-    .map(id => list.byId[id])
-    .filter((summary): summary is SessionSummary =>
-      summary !== undefined && !accounted.has(summary.id) && sessionVisible(summary, mainSessionId(list), archived, 'default'))
-  if (loose.length > 0) {
-    const key = ungroupedExpansionKey()
-    const isExpanded = expanded.has(key)
-    const members = orderedUngrouped(loose, view.ungroupedOrder, list.byId)
-    hierarchy.push({
-      kind: 'ungrouped',
-      key,
-      expanded: isExpanded,
-      containsCurrent: mainSessionId(list) !== undefined && members.some(member => member.id === mainSessionId(list)),
-      sessionCount: members.length,
-      sessions: isExpanded ? members.map(member => sessionNode(member, list, new Map(), new Set(), archived)) : [],
-    })
-  }
-  return hierarchy
 }
 
 /**

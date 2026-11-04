@@ -66,7 +66,12 @@ const sessionState = (
     byId: { ...state.byId, [main]: { ...row, retainedBy: { ...row.retainedBy, mainView: 1 } } },
   }
 }
-const workspace = (id: string, sessionIds: string[], title = id): WorkspaceView => ({
+const workspace = (
+  id: string,
+  sessionIds: string[],
+  title = id,
+  folders: WorkspaceView['folders'] = [],
+): WorkspaceView => ({
   workspaceId: wid(id), path: `/projects/${id}`, title,
   sessionIds: sessionIds.map(sid), folders,
   createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
@@ -82,14 +87,15 @@ const group = (id: string, title: string, workspaceIds: string[] = []): Workspac
 const workspaceState = (
   items: readonly WorkspaceView[],
   archivedSessionIds: readonly SessionId[] = [],
+  pinnedSessionIds: readonly SessionId[] = [],
   layout: Partial<Pick<WorkspaceSnapshot, 'topLevelWorkspaceIds' | 'groups'>> = {},
 ): WorkspaceSnapshot => ({
   items,
   topLevelWorkspaceIds: layout.topLevelWorkspaceIds ?? items.map(item => item.workspaceId),
   groups: layout.groups ?? [],
-  archivedSessionIds, pinnedSessionIds: [], state: 'idle', phase: 'ready', error: null,
+  archivedSessionIds, pinnedSessionIds, state: 'idle', phase: 'ready', error: null,
 })
-const noPendingInteraction: SessionPendingInteractionSnapshot = new Map()
+const noPendingInteraction: SessionStatusSnapshot = new Map()
 function hook<T>(snapshot: T) {
   return function select<S>(selector: (state: T) => S): S { return selector(snapshot) }
 }
@@ -154,6 +160,14 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     notifyArchivedNotOpenable: vi.fn(),
     renameWorkspace: vi.fn(async () => {}),
     deleteWorkspace: vi.fn(async () => {}),
+    createGroup: vi.fn(async () => {}),
+    renameGroup: vi.fn(async () => {}),
+    deleteGroup: vi.fn(async () => {}),
+    createFolder: vi.fn(async () => {}),
+    renameFolder: vi.fn(async () => {}),
+    deleteFolder: vi.fn(async () => {}),
+    openGroupMenu: vi.fn(),
+    openFolderMenu: vi.fn(),
     unarchiveSession: vi.fn(async () => {}),
     insertWorkspaceBefore: vi.fn(async () => {}),
     createWorkspace: vi.fn(async () => workspace('created', [])),
@@ -164,7 +178,7 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     ...overrides,
   }
   const view = render(<WorkspaceBrowser {...props} />)
-  return { view, props, store, controls, openDialog: (workspaceId: WorkspaceId, displayTitle: string, action: 'rename' | 'delete') => {
+  return { view, props, store, controls, request: (next: WorkspaceActionRequest) => { act(() => { request.set(next) }) }, openDialog: (workspaceId: WorkspaceId, displayTitle: string, action: 'rename' | 'delete') => {
     const storedTitle = props.useWorkspaces(state => state.items.find(row => row.workspaceId === workspaceId)?.title ?? displayTitle)
     act(() => { request.set({ action, workspaceId, displayTitle, storedTitle }) })
   } }
@@ -528,9 +542,10 @@ describe('WorkspaceBrowser', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '视图选项' }))
     expect(screen.getByText('分组方式')).toBeTruthy() // the menu heading label
-    expect(screen.getAllByRole('separator')).toHaveLength(2)
+    expect(screen.getAllByRole('separator')).toHaveLength(3)
     expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([
       '按工作区', '按工作区树', '单列表', '手动排序', '最近更新', '隐藏已归档', '全部对话（显示已归档）', '仅显示已归档',
+      '新建工作区组',
     ])
     expect(screen.getByRole('menuitem', { name: '按工作区' }).querySelector('svg')).toBeTruthy()
     expect(screen.getByRole('menuitem', { name: '手动排序' }).querySelector('svg')).toBeTruthy()
@@ -1376,7 +1391,7 @@ describe('WorkspaceBrowser', () => {
     expect(startSession).toHaveBeenCalledWith(wid('alpha'))
   })
 
-  it('auto-expands the Ungrouped bucket for a loose current session; its header has neither menu nor ＋', () => {
+  it('auto-expands the Ungrouped bucket for a loose current session; its header has no menu and its ＋ is inert', () => {
     const startSession = vi.fn()
     mount({
       useSessions: hook(sessionState([summary('loose', 1)], { main: sid('loose') })),
@@ -1386,9 +1401,7 @@ describe('WorkspaceBrowser', () => {
     // The loose session's group is UNGROUPED_KEY: expanded by the effect.
     expect(screen.getByText('loose')).toBeTruthy()
     expect(screen.queryByRole('button', { name: '工作区“未分组”的操作' })).toBeNull()
-    // The synthetic bucket backs no Workspace, so it offers no create affordance
-    // at all — new Sessions always start inside a real Workspace.
-    expect(screen.queryByRole('button', { name: '在“未分组”中新建会话' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '在“未分组”中新建会话' }))
     expect(startSession).not.toHaveBeenCalled()
   })
 
@@ -2108,10 +2121,9 @@ describe('WorkspaceBrowser', () => {
     })
     fireEvent.click(screen.getByText('beta'))
     const source = screen.getByText('tail').closest('[role="treeitem"]') as HTMLElement
-    // The draggable section carries the drop handlers; it sits one key-wrapper
-    // below the tree (`section → key-wrapper → tree`).
+    // The draggable section carries the drop handlers and sits directly below the tree.
     let targetSection = screen.getByText('beta').closest('[role="treeitem"]')?.parentElement as HTMLElement
-    while (targetSection.parentElement?.parentElement?.getAttribute('role') !== 'tree') {
+    while (targetSection.parentElement?.getAttribute('role') !== 'tree') {
       targetSection = targetSection.parentElement as HTMLElement
     }
     targetSection.getBoundingClientRect = () => ({
@@ -2132,9 +2144,8 @@ describe('WorkspaceBrowser', () => {
       ])),
     })
     const source = screen.getByText('beta').closest('[role="treeitem"]') as HTMLElement
-    // Walk to the drop-handling section: `section → key-wrapper → tree`.
     let firstSection = screen.getByText('alpha').closest('[role="treeitem"]')?.parentElement as HTMLElement
-    while (firstSection.parentElement?.parentElement?.getAttribute('role') !== 'tree') {
+    while (firstSection.parentElement?.getAttribute('role') !== 'tree') {
       firstSection = firstSection.parentElement as HTMLElement
     }
     firstSection.getBoundingClientRect = () => ({
@@ -2142,10 +2153,9 @@ describe('WorkspaceBrowser', () => {
     })
     fireEvent.dragStart(source, { dataTransfer: dragData() })
     fireDrag(firstSection, 'dragOver', 105)
-    // The active list is the tree two levels up; the indicator span precedes it.
-    const tree = firstSection.parentElement?.parentElement
-    expect(tree?.className).toContain('listTopDropActive')
-    expect(tree?.previousElementSibling?.className).toContain('listTopDropIndicator')
+    expect(firstSection.parentElement?.className).toContain('listTopDropActive')
+    const marker = firstSection.parentElement?.previousElementSibling
+    expect(marker?.className).toContain('listTopDropIndicator')
   })
 
   it('accepts a document-level drop and commits the last Workspace marker on drag end', () => {
@@ -2160,7 +2170,7 @@ describe('WorkspaceBrowser', () => {
     })
     const source = screen.getByText('tail').closest('[role="treeitem"]') as HTMLElement
     let target = screen.getByText('beta').closest('[role="treeitem"]')?.parentElement as HTMLElement
-    while (target.parentElement?.parentElement?.getAttribute('role') !== 'tree') {
+    while (target.parentElement?.getAttribute('role') !== 'tree') {
       target = target.parentElement as HTMLElement
     }
     target.getBoundingClientRect = () => ({
@@ -2651,6 +2661,7 @@ describe('WorkspaceBrowser', () => {
         useWorkspaces: hook(workspaceState(
           [workspace('alpha', [], 'Alpha')],
           [],
+          [],
           { groups: [group('g-existing', 'Existing')] },
         )),
         createGroup,
@@ -2674,6 +2685,17 @@ describe('WorkspaceBrowser', () => {
       await waitFor(() => { expect(screen.queryByRole('dialog')).toBeNull() })
     })
 
+    it('offers no create-Group entry outside the Workspace view', () => {
+      mount({ useWorkspaces: hook(workspaceState([workspace('alpha', [], 'Alpha')])) })
+      createWorkspaceViewStore().create().actions.setGroupBy('flat')
+      cleanup()
+      mount({ useWorkspaces: hook(workspaceState([workspace('alpha', [], 'Alpha')])) })
+      fireEvent.click(screen.getByRole('button', { name: '视图选项' }))
+      fireEvent.click(screen.getByRole('menuitem', { name: '单列表' }))
+      fireEvent.click(screen.getByRole('button', { name: '视图选项' }))
+      expect(screen.queryByRole('menuitem', { name: '新建工作区组' })).toBeNull()
+    })
+
     it('keeps the create-Group dialog open on rejection and reports the failure', async () => {
       const createGroup = vi.fn(async () => { throw new Error('name taken') })
       mount({ createGroup })
@@ -2687,16 +2709,46 @@ describe('WorkspaceBrowser', () => {
       expect(screen.queryByRole('dialog')).toBeNull()
     })
 
-    it('renames a Group from its row menu dialog', async () => {
-      const renameGroup = vi.fn(async () => {})
+    it('renders a Group row whose actions button opens the Group menu and whose label toggles expansion', () => {
+      const openGroupMenu = vi.fn()
+      const b = mount({
+        useWorkspaces: hook(workspaceState([workspace('alpha', [], 'Alpha')], [], [], {
+          topLevelWorkspaceIds: [], groups: [group('g-research', 'Research', ['alpha'])],
+        })),
+        openGroupMenu,
+      })
+      // A collapsed Group hides its member Workspaces.
+      expect(screen.queryByText('Alpha')).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: '工作区组“Research”的操作' }))
+      expect(openGroupMenu).toHaveBeenCalledOnce()
+      expect(openGroupMenu.mock.calls[0]).toMatchObject(['g-research', 'Research', {}, 'toggle'])
+      fireEvent.click(screen.getByText('Research'))
+      expect(screen.getByText('Alpha')).toBeTruthy()
+      expect(b.store.getSnapshot().groupExpansion).toEqual({ 'workspace-group:g-research': true })
+      fireEvent.click(screen.getByText('Research'))
+      expect(screen.queryByText('Alpha')).toBeNull()
+    })
+
+    it('lists Groups before top-level Workspaces and keeps empty Groups visible', () => {
       mount({
-        useWorkspaces: hook(workspaceState([], [], {
+        useWorkspaces: hook(workspaceState([workspace('alpha', [], 'Alpha'), workspace('beta', [], 'Beta')], [], [], {
+          topLevelWorkspaceIds: [wid('beta')],
+          groups: [group('g-empty', 'Empty'), group('g-research', 'Research', ['alpha'])],
+        })),
+      })
+      expect(screen.getAllByRole('treeitem').map(row => row.textContent?.replace(/\d+$/, '')))
+        .toEqual(['Empty', 'Research', 'Beta'])
+    })
+
+    it('renames a Group from its dialog', async () => {
+      const renameGroup = vi.fn(async () => {})
+      const b = mount({
+        useWorkspaces: hook(workspaceState([], [], [], {
           topLevelWorkspaceIds: [], groups: [group('g-research', 'Research')],
         })),
         renameGroup,
       })
-      fireEvent.click(screen.getByRole('button', { name: '工作区组“Research”的操作' }))
-      fireEvent.click(screen.getByRole('menuitem', { name: '重命名' }))
+      b.request({ action: 'renameGroup', groupId: 'g-research' as GroupId, displayTitle: 'Research' })
       const input = screen.getByLabelText<HTMLInputElement>('工作区组名称')
       expect(input.value).toBe('Research')
       // The unchanged name stays blocked.
@@ -2712,11 +2764,10 @@ describe('WorkspaceBrowser', () => {
       const deleteGroup = vi.fn(() => new Promise<void>((resolve) => { resolveDissolve = resolve }))
       const layout = { groups: [group('g-research', 'Research', ['alpha'])] }
       const browser = mount({
-        useWorkspaces: hook(workspaceState([workspace('alpha', [], 'Alpha')], [], layout)),
+        useWorkspaces: hook(workspaceState([workspace('alpha', [], 'Alpha')], [], [], layout)),
         deleteGroup,
       })
-      fireEvent.click(screen.getByRole('button', { name: '工作区组“Research”的操作' }))
-      fireEvent.click(screen.getByRole('menuitem', { name: '解散工作区组' }))
+      browser.request({ action: 'deleteGroup', groupId: 'g-research' as GroupId, displayTitle: 'Research' })
       const dialog = screen.getByRole('dialog', { name: '解散工作区组' })
       // The non-destructive outcome is stated in the confirmation copy.
       expect(dialog.textContent).toContain('将解散“Research”')
@@ -2738,14 +2789,13 @@ describe('WorkspaceBrowser', () => {
 
     it('keeps the dissolve dialog open on rejection', async () => {
       const deleteGroup = vi.fn(async () => { throw new Error('layout write failed') })
-      mount({
-        useWorkspaces: hook(workspaceState([], [], {
+      const b = mount({
+        useWorkspaces: hook(workspaceState([], [], [], {
           topLevelWorkspaceIds: [], groups: [group('g-research', 'Research')],
         })),
         deleteGroup,
       })
-      fireEvent.click(screen.getByRole('button', { name: '工作区组“Research”的操作' }))
-      fireEvent.click(screen.getByRole('menuitem', { name: '解散工作区组' }))
+      b.request({ action: 'deleteGroup', groupId: 'g-research' as GroupId, displayTitle: 'Research' })
       fireEvent.click(screen.getByRole('button', { name: '解散工作区组' }))
       await waitFor(() => { expect(screen.getByRole('alert').textContent).toBe('layout write failed') })
       expect(screen.getByRole('dialog', { name: '解散工作区组' })).toBeTruthy()
@@ -2753,85 +2803,22 @@ describe('WorkspaceBrowser', () => {
       expect(screen.queryByRole('dialog')).toBeNull()
     })
 
-    it('moves a top-level Workspace into a Group from its row menu submenu', () => {
-      const moveToGroup = vi.fn(async () => {})
-      mount({
-        useWorkspaces: hook(workspaceState(
-          [workspace('alpha', [], 'Alpha')],
-          [],
-          { groups: [group('g-research', 'Research'), group('g-side', 'Side')] },
-        )),
-        moveToGroup,
+    it('expands the Group that holds the current Session', () => {
+      const b = mount({
+        useSessions: hook(sessionState([summary('draft', 1)], { main: sid('draft') })),
+        useWorkspaces: hook(workspaceState([workspace('alpha', ['draft'], 'Alpha')], [], [], {
+          topLevelWorkspaceIds: [], groups: [group('g-research', 'Research', ['alpha'])],
+        })),
       })
-      fireEvent.click(screen.getByRole('button', { name: '工作区“Alpha”的操作' }))
-      fireEvent.click(screen.getByRole('menuitem', { name: '移至工作区组' }))
-      // A top-level Workspace gets no "move to top level" leaf.
-      expect(screen.queryByRole('menuitem', { name: '移至工作区顶层' })).toBeNull()
-      fireEvent.click(screen.getByRole('menuitem', { name: 'Research' }))
-      expect(moveToGroup).toHaveBeenCalledWith(wid('alpha'), 'g-research' as GroupId)
-    })
-
-    it('lifts a grouped Workspace back to the top level and offers only the other Groups', () => {
-      const moveToGroup = vi.fn(async () => {})
-      mount({
-        useWorkspaces: hook(workspaceState(
-          [workspace('alpha', [], 'Alpha')],
-          [],
-          {
-            topLevelWorkspaceIds: [],
-            groups: [
-              group('g-research', 'Research', ['alpha']),
-              group('g-side', 'Side'),
-            ],
-          },
-        )),
-        moveToGroup,
+      expect(screen.getByText('draft')).toBeTruthy()
+      expect(b.store.getSnapshot().groupExpansion).toEqual({
+        'workspace:alpha': true, 'workspace-group:g-research': true,
       })
-      // The Group row toggles its own expansion; click the row label to open it.
-      fireEvent.click(screen.getByText('Research'))
-      // The move submenu sits on the member Workspace row, nested under the Group.
-      fireEvent.click(screen.getByRole('button', { name: '工作区“Alpha”的操作' }))
-      fireEvent.click(screen.getByRole('menuitem', { name: '移至工作区组' }))
-      expect(screen.queryByRole('menuitem', { name: 'Research' })).toBeNull()
-      expect(screen.getByRole('menuitem', { name: 'Side' })).toBeTruthy()
-      fireEvent.click(screen.getByRole('menuitem', { name: '移至工作区顶层' }))
-      expect(moveToGroup).toHaveBeenCalledWith(wid('alpha'), undefined)
-    })
-
-    it('omits the move row entirely when a top-level Workspace has no Groups', () => {
-      mount({ useWorkspaces: hook(workspaceState([workspace('alpha', [], 'Alpha')])) })
-      fireEvent.click(screen.getByRole('button', { name: '工作区“Alpha”的操作' }))
-      expect(screen.queryByRole('menuitem', { name: '移至工作区组', hidden: true })).toBeNull()
-    })
-
-    it('logs and keeps the layout when the Group move rejects', async () => {
-      const rejection = new Error('group move denied')
-      const error = vi.spyOn(console, 'error').mockImplementation(() => {})
-      try {
-        const moveToGroup = vi.fn(async () => { throw rejection })
-        mount({
-          useWorkspaces: hook(workspaceState(
-            [workspace('alpha', [], 'Alpha')],
-            [],
-            { groups: [group('g-research', 'Research')] },
-          )),
-          moveToGroup,
-        })
-        fireEvent.click(screen.getByRole('button', { name: '工作区“Alpha”的操作' }))
-        fireEvent.click(screen.getByRole('menuitem', { name: '移至工作区组' }))
-        fireEvent.click(screen.getByRole('menuitem', { name: 'Research' }))
-        await waitFor(() => {
-          expect(error).toHaveBeenCalledWith('workspace group move rejected:', rejection)
-        })
-        expect(screen.getByText('Alpha')).toBeTruthy()
-      } finally {
-        error.mockRestore()
-      }
     })
   })
 
   describe('Session Folder organization', () => {
-    it('creates a Folder from the Workspace row menu, expands the Workspace, and blocks duplicates', async () => {
+    it('creates a Folder from its dialog, expands the Workspace, and blocks duplicates', async () => {
       const createFolder = vi.fn(async () => {})
       const browser = mount({
         useWorkspaces: hook(workspaceState([
@@ -2839,8 +2826,7 @@ describe('WorkspaceBrowser', () => {
         ])),
         createFolder,
       })
-      fireEvent.click(screen.getByRole('button', { name: '工作区“Alpha”的操作' }))
-      fireEvent.click(screen.getByRole('menuitem', { name: '新建文件夹' }))
+      browser.request({ action: 'createFolder', workspaceId: wid('alpha'), displayTitle: 'Alpha' })
       const input = screen.getByLabelText<HTMLInputElement>('文件夹名称')
       const confirm = () => screen.getByRole<HTMLButtonElement>('button', { name: '新建文件夹' })
       expect(confirm().disabled).toBe(true)
@@ -2856,7 +2842,31 @@ describe('WorkspaceBrowser', () => {
         .toEqual({ [workspaceExpansionKey(wid('alpha'))]: true })
     })
 
-    it('renames a Folder from its row menu dialog', async () => {
+    it('renders Folder rows under an expanded Workspace and opens the Folder menu', () => {
+      const openFolderMenu = vi.fn()
+      const browser = mount({
+        useSessions: hook(sessionState([summary('draft', 1), summary('loose', 2)])),
+        useWorkspaces: hook(workspaceState([
+          workspace('alpha', ['draft', 'loose'], 'Alpha', [folder('f-exp', 'Experiments', ['draft'])]),
+        ])),
+        openFolderMenu,
+      })
+      // A collapsed Workspace hides its Folders.
+      expect(screen.queryByText('Experiments')).toBeNull()
+      browserExpand(browser, wid('alpha'))
+      expect(screen.getByText('Experiments')).toBeTruthy()
+      // A collapsed Folder hides the Sessions filed in it; the root Session stays.
+      expect(screen.queryByText('draft')).toBeNull()
+      expect(screen.getByText('loose')).toBeTruthy()
+      fireEvent.click(screen.getByRole('button', { name: '文件夹“Experiments”的操作' }))
+      expect(openFolderMenu).toHaveBeenCalledOnce()
+      expect(openFolderMenu.mock.calls[0]).toMatchObject(['alpha', 'f-exp', 'Experiments', {}, 'toggle'])
+      fireEvent.click(screen.getByText('Experiments'))
+      expect(screen.getByText('draft')).toBeTruthy()
+      expect(browser.store.getSnapshot().groupExpansion[folderExpansionKey(wid('alpha'), 'f-exp')]).toBe(true)
+    })
+
+    it('renames a Folder from its dialog', async () => {
       const renameFolder = vi.fn(async () => {})
       const browser = mount({
         useWorkspaces: hook(workspaceState([
@@ -2864,10 +2874,9 @@ describe('WorkspaceBrowser', () => {
         ])),
         renameFolder,
       })
-      // Expand the Workspace so its Folder rows render.
-      browserExpand(browser, wid('alpha'))
-      fireEvent.click(screen.getByRole('button', { name: '文件夹“Experiments”的操作' }))
-      fireEvent.click(screen.getByRole('menuitem', { name: '重命名' }))
+      browser.request({
+        action: 'renameFolder', workspaceId: wid('alpha'), folderId: 'f-exp' as FolderId, displayTitle: 'Experiments',
+      })
       const input = screen.getByLabelText<HTMLInputElement>('文件夹名称')
       expect(input.value).toBe('Experiments')
       expect(screen.getByRole<HTMLButtonElement>('button', { name: '重命名' }).disabled).toBe(true)
@@ -2887,8 +2896,9 @@ describe('WorkspaceBrowser', () => {
         deleteFolder,
       })
       browserExpand(browser, wid('alpha'))
-      fireEvent.click(screen.getByRole('button', { name: '文件夹“Experiments”的操作' }))
-      fireEvent.click(screen.getByRole('menuitem', { name: '删除文件夹' }))
+      browser.request({
+        action: 'deleteFolder', workspaceId: wid('alpha'), folderId: 'f-exp' as FolderId, displayTitle: 'Experiments',
+      })
       const dialog = screen.getByRole('dialog', { name: '删除文件夹' })
       expect(dialog.textContent).toContain('将删除“Experiments”')
       expect(dialog.textContent).toContain('其中的会话会返回工作区根目录')
@@ -2915,85 +2925,14 @@ describe('WorkspaceBrowser', () => {
         ])),
         deleteFolder,
       })
-      browserExpand(browser, wid('alpha'))
-      fireEvent.click(screen.getByRole('button', { name: '文件夹“Experiments”的操作' }))
-      fireEvent.click(screen.getByRole('menuitem', { name: '删除文件夹' }))
+      browser.request({
+        action: 'deleteFolder', workspaceId: wid('alpha'), folderId: 'f-exp' as FolderId, displayTitle: 'Experiments',
+      })
       fireEvent.click(screen.getByRole('button', { name: '删除文件夹' }))
       await waitFor(() => { expect(screen.getByRole('alert').textContent).toBe('folder locked') })
       expect(screen.getByRole('dialog', { name: '删除文件夹' })).toBeTruthy()
       fireEvent.click(screen.getByRole('button', { name: '取消' }))
       expect(screen.queryByRole('dialog')).toBeNull()
-    })
-
-    it('files a root Session into a Folder from its row menu submenu', () => {
-      const moveSessionToFolder = vi.fn(async () => {})
-      const browser = mount({
-        useSessions: hook(sessionState([summary('draft', 1)])),
-        useWorkspaces: hook(workspaceState([
-          workspace('alpha', ['draft'], 'Alpha', [folder('f-exp', 'Experiments')]),
-        ])),
-        moveSessionToFolder,
-      })
-      browserExpand(browser, wid('alpha'))
-      fireEvent.click(screen.getByRole('button', { name: '会话“draft”的操作' }))
-      fireEvent.click(screen.getByRole('menuitem', { name: '移至文件夹' }))
-      // A root Session gets no "move to root" leaf.
-      expect(screen.queryByRole('menuitem', { name: '移至工作区根目录' })).toBeNull()
-      fireEvent.click(screen.getByRole('menuitem', { name: 'Experiments' }))
-      expect(moveSessionToFolder).toHaveBeenCalledWith(wid('alpha'), sid('draft'), 'f-exp' as FolderId)
-    })
-
-    it('returns a filed Session to the Workspace root from its row menu submenu', () => {
-      const moveSessionToFolder = vi.fn(async () => {})
-      const browser = mount({
-        useSessions: hook(sessionState([summary('draft', 1)])),
-        useWorkspaces: hook(workspaceState([
-          workspace('alpha', ['draft'], 'Alpha', [folder('f-exp', 'Experiments', ['draft'])]),
-        ])),
-        moveSessionToFolder,
-      })
-      browserExpand(browser, wid('alpha'), 'f-exp')
-      fireEvent.click(screen.getByRole('button', { name: '会话“draft”的操作' }))
-      fireEvent.click(screen.getByRole('menuitem', { name: '移至文件夹' }))
-      // A filed Session gets no leaf for its current Folder.
-      expect(screen.queryByRole('menuitem', { name: 'Experiments' })).toBeNull()
-      fireEvent.click(screen.getByRole('menuitem', { name: '移至工作区根目录' }))
-      expect(moveSessionToFolder).toHaveBeenCalledWith(wid('alpha'), sid('draft'), undefined)
-    })
-
-    it('omits the Session move row entirely when the Workspace has no Folders', () => {
-      const browser = mount({
-        useSessions: hook(sessionState([summary('draft', 1)])),
-        useWorkspaces: hook(workspaceState([workspace('alpha', ['draft'], 'Alpha')])),
-      })
-      browserExpand(browser, wid('alpha'))
-      fireEvent.click(screen.getByRole('button', { name: '会话“draft”的操作' }))
-      expect(screen.queryByRole('menuitem', { name: '移至文件夹' })).toBeNull()
-    })
-
-    it('logs and keeps the layout when the Session filing rejects', async () => {
-      const rejection = new Error('folder move denied')
-      const error = vi.spyOn(console, 'error').mockImplementation(() => {})
-      try {
-        const moveSessionToFolder = vi.fn(async () => { throw rejection })
-        const browser = mount({
-          useSessions: hook(sessionState([summary('draft', 1)])),
-          useWorkspaces: hook(workspaceState([
-            workspace('alpha', ['draft'], 'Alpha', [folder('f-exp', 'Experiments')]),
-          ])),
-          moveSessionToFolder,
-        })
-        browserExpand(browser, wid('alpha'))
-        fireEvent.click(screen.getByRole('button', { name: '会话“draft”的操作' }))
-        fireEvent.click(screen.getByRole('menuitem', { name: '移至文件夹' }))
-        fireEvent.click(screen.getByRole('menuitem', { name: 'Experiments' }))
-        await waitFor(() => {
-          expect(error).toHaveBeenCalledWith('session folder move rejected:', rejection)
-        })
-        expect(screen.getByText('draft')).toBeTruthy()
-      } finally {
-        error.mockRestore()
-      }
     })
   })
 })

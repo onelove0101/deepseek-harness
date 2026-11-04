@@ -59,16 +59,35 @@ declare module '@deepseek-ai/dsh-client-ui-context-menu/client' {
   interface ContextMenuTargetMap {
     /** Registered Workspace header; path and title belong to the clicked row. */
     workspace: { readonly workspaceId: WorkspaceId; readonly path: string; readonly displayTitle: string }
+    /** Durable Workspace Group header. */
+    workspaceGroup: { readonly groupId: GroupId; readonly displayTitle: string }
+    /** Workspace-local Session Folder header. */
+    workspaceFolder: { readonly workspaceId: WorkspaceId; readonly folderId: FolderId; readonly displayTitle: string }
   }
 }
 
-/** One request for the existing Workspace rename or delete dialog. */
-export type WorkspaceActionRequest = {
+/** One request for the Workspace rename or delete dialog. */
+export type WorkspaceEntityRequest = {
   readonly action: 'rename' | 'delete'
   readonly workspaceId: WorkspaceId
   readonly displayTitle: string
   readonly storedTitle: string
 }
+
+/** One request for a Workspace Group or Session Folder dialog. */
+export type WorkspaceOrganizationRequest =
+  | { readonly action: 'createGroup' }
+  | { readonly action: 'renameGroup' | 'deleteGroup'; readonly groupId: GroupId; readonly displayTitle: string }
+  | { readonly action: 'createFolder'; readonly workspaceId: WorkspaceId; readonly displayTitle: string }
+  | {
+    readonly action: 'renameFolder' | 'deleteFolder'
+    readonly workspaceId: WorkspaceId
+    readonly folderId: FolderId
+    readonly displayTitle: string
+  }
+
+/** One request for a Workspace, Group, or Folder dialog. */
+export type WorkspaceActionRequest = WorkspaceEntityRequest | WorkspaceOrganizationRequest
 
 /**
  * Owner share of the directory-flow holes: the complete conversation between
@@ -245,6 +264,16 @@ export type DirectoryPickingHooks = PropsHooks<DirectoryPickingInjected['hooks']
 export type WorkspaceBrowserInjected = {
   /** Open the registered Workspace actions without changing expansion or selection. */
   openWorkspaceMenu: (workspaceId: WorkspaceId, path: string, displayTitle: string, point: { x: number; y: number }, mode?: 'toggle') => void
+  /** Open the registered Group actions without changing expansion. */
+  openGroupMenu: (groupId: GroupId, displayTitle: string, point: { x: number; y: number }, mode?: 'toggle') => void
+  /** Open the registered Folder actions without changing expansion. */
+  openFolderMenu: (
+    workspaceId: WorkspaceId,
+    folderId: FolderId,
+    displayTitle: string,
+    point: { x: number; y: number },
+    mode?: 'toggle',
+  ) => void
   /** Dismiss the settled Workspace dialog. */
   settleWorkspaceAction: () => void
   /** Open actions for the clicked Session without selecting it. */
@@ -302,16 +331,12 @@ export type WorkspaceBrowserInjected = {
   renameGroup: (groupId: GroupId, title: string) => Promise<void>
   /** Dissolve one durable Workspace Group without deleting its Workspaces. */
   deleteGroup: (groupId: GroupId) => Promise<void>
-  /** File a Workspace in a Group, or return it to the top-level list. */
-  moveToGroup: (workspaceId: WorkspaceId, groupId?: GroupId) => Promise<void>
   /** Create one logical Session Folder in a Workspace. */
   createFolder: (workspaceId: WorkspaceId, title: string) => Promise<void>
   /** Rename one logical Session Folder. */
   renameFolder: (workspaceId: WorkspaceId, folderId: FolderId, title: string) => Promise<void>
   /** Delete one Folder and return its Sessions to the Workspace root. */
   deleteFolder: (workspaceId: WorkspaceId, folderId: FolderId) => Promise<void>
-  /** File an owned Session in a Folder, or return it to the Workspace root. */
-  moveSessionToFolder: (workspaceId: WorkspaceId, sessionId: SessionId, folderId?: FolderId) => Promise<void>
   /**
    * Reorder a top-level Workspace in the durable registry display order.
    * Omitted anchor appends to the end.

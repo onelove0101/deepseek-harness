@@ -10,13 +10,12 @@
  * @module @deepseek-ai/dsh-skill
  */
 
-import { Context, Service } from '@deepseek-ai/cordis'
+import { Context, Service, type Volatile } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-llm'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { NamedEntries, ScopedLayers, scopeChainOf, scopeOf } from '@deepseek-ai/dsh-scope'
 import type { ScopeKey, ScopeLayer } from '@deepseek-ai/dsh-scope'
 import z from '@deepseek-ai/schemastery'
-import type Schema from '@deepseek-ai/schemastery'
 
 const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const DEFAULT_COLLECT_CACHE_ENTRIES = 128
@@ -280,6 +279,10 @@ export interface SkillProviderControl {
 export interface Config {
   /** Maximum number of completed cwd/provider catalogs kept in memory. */
   readonly collectCacheMaxEntries?: number
+  /** Skill names the user turned off; read per lookup, so edits apply without a remount. Defaults to none. */
+  readonly disabled?: Volatile<readonly string[]>
+  /** Absolute directories the user added, each holding one `SKILL.md`; read per lookup. Defaults to none. */
+  readonly dirs?: Volatile<readonly string[]>
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -356,8 +359,10 @@ class SkillLayer implements ScopeLayer {
  * on demand.
  */
 export class SkillRegistry extends Service {
-  static Config: Schema<Config> = z.object({
+  static Config = z.object({
     collectCacheMaxEntries: z.number().default(DEFAULT_COLLECT_CACHE_ENTRIES),
+    disabled: z.array(z.string()).default([]).volatile(),
+    dirs: z.array(z.string()).default([]).volatile(),
   })
 
   private readonly collectCacheMaxEntries: number
@@ -374,7 +379,7 @@ export class SkillRegistry extends Service {
   private readonly scopeIds = new WeakMap<ScopeKey, number>()
   private nextScopeId = 1
 
-  constructor(ctx: Context, config: Config = {}) {
+  constructor(ctx: Context, private readonly config: Config = {}) {
     super(ctx, 'skills')
     this.collectCacheMaxEntries = config.collectCacheMaxEntries ?? DEFAULT_COLLECT_CACHE_ENTRIES
     assertPositiveInteger('collectCacheMaxEntries', this.collectCacheMaxEntries)
@@ -445,6 +450,14 @@ export class SkillRegistry extends Service {
     return () => {
       if (this.hidden === box) this.hidden = undefined
     }
+  }
+
+  /**
+   * Read the user's skill preferences from the live Config.
+   * @returns the disabled skill names and the user-added skill directories.
+   */
+  userPreferences(): { readonly disabled: readonly string[]; readonly dirs: readonly string[] } {
+    return { disabled: this.config.disabled?.get() ?? [], dirs: this.config.dirs?.get() ?? [] }
   }
 
   /** Emit `skills/change` after the hidden-name source changed its answer. */

@@ -262,7 +262,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-api-session-controller`
 
 - `inject`: `agentDefaultModel` · `agents` · `attachments` · `fileUploads` · `fs` · `llm` · `remoteAccess` · `sessions` · `sessionProjections` · `sessionQuery` · `typert` · `typertGateway` · `workspaceRegistry`
-- `source`: [`packages/api/session-controller/src/index.ts:110`](../packages/api/session-controller/src/index.ts)
+- `source`: [`packages/api/session-controller/src/index.ts:112`](../packages/api/session-controller/src/index.ts)
 
 ```ts config-catalog
 /** Session Controller deployment policy. */
@@ -343,7 +343,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-api-workspace-controller`
 
 - `inject`: `remoteAccess` · `typert` · `workspaceRegistry`
-- `source`: [`packages/api/workspace-controller/src/index.ts:37`](../packages/api/workspace-controller/src/index.ts)
+- `source`: [`packages/api/workspace-controller/src/index.ts:49`](../packages/api/workspace-controller/src/index.ts)
 
 ```ts config-catalog
 /** First-use directory policy for the Host account. */
@@ -1529,6 +1529,45 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-experimental-worktree -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-expert -->
+<a id="deepseek-aidsh-expert"></a>
+
+## `@deepseek-ai/dsh-expert`
+
+- `inject`: `agents` · `skills` · `storageDomain`
+- `source`: [`packages/preset/expert/src/index.ts:49`](../packages/preset/expert/src/index.ts)
+
+```ts config-catalog
+/**
+ * Required storage and invocation bounds; every field is a deployment decision.
+ * `maxInvocationLibraryBytes` bounds the complete rendered invocation message.
+ */
+export type Config = ExpertLimits
+
+/** The deployment's storage bounds, reported so the Settings page can pre-check input. */
+export interface ExpertLimits {
+  /** Maximum number of Experts. */
+  readonly maxExperts: number
+  /** Maximum UTF-8 bytes of one Soul. */
+  readonly maxSoulBytes: number
+  /** Maximum skills selected by one Expert. */
+  readonly maxSkillsPerExpert: number
+  /** Maximum number of stored documents. */
+  readonly maxDocuments: number
+  /** Maximum UTF-8 bytes of one document's text. */
+  readonly maxDocumentBytes: number
+  /** Maximum number of knowledge bases. */
+  readonly maxKnowledgeBases: number
+  /** Maximum documents in one knowledge base. */
+  readonly maxDocumentsPerKnowledgeBase: number
+  /** Maximum total UTF-8 bytes of all stored document text. */
+  readonly maxLibraryBytes: number
+  /** Maximum UTF-8 bytes of the complete rendered invocation message: Soul, skill bodies, library text, wrappers, and XML escaping. */
+  readonly maxInvocationLibraryBytes: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-expert -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-file-reference-local -->
 <a id="deepseek-aidsh-file-reference-local"></a>
@@ -3364,13 +3403,18 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-skill`
 
-- `source`: [`packages/skill/skill/src/index.ts:278`](../packages/skill/skill/src/index.ts)
+- `refs`: `Volatile` (`@deepseek-ai/cordis`)
+- `source`: [`packages/skill/skill/src/index.ts:279`](../packages/skill/skill/src/index.ts)
 
 ```ts config-catalog
 /** Skill registry configuration. */
 export interface Config {
   /** Maximum number of completed cwd/provider catalogs kept in memory. */
   readonly collectCacheMaxEntries?: number
+  /** Skill names the user turned off; read per lookup, so edits apply without a remount. Defaults to none. */
+  readonly disabled?: Volatile<readonly string[]>
+  /** Absolute directories the user added, each holding one `SKILL.md`; read per lookup. Defaults to none. */
+  readonly dirs?: Volatile<readonly string[]>
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-skill -->
@@ -4895,6 +4939,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-api-remotes` | `typertGateway` | [`packages/api/remotes/src/index.ts`](../packages/api/remotes/src/index.ts) |
 | `@deepseek-ai/dsh-authorization` | `credentials` | [`packages/credentials/authorization/src/index.ts`](../packages/credentials/authorization/src/index.ts) |
 | `@deepseek-ai/dsh-browser-use` | — | [`packages/browser-use/browser-use/src/index.ts`](../packages/browser-use/browser-use/src/index.ts) |
+| `@deepseek-ai/dsh-client-chat-process-fold` | — | [`packages/client/chat-process-fold/src/index.ts`](../packages/client/chat-process-fold/src/index.ts) |
 | `@deepseek-ai/dsh-client-file-upload` | `agents` · `attachments` · `commands` · `connection` | [`packages/client/file-upload/src/index.ts`](../packages/client/file-upload/src/index.ts) |
 | `@deepseek-ai/dsh-client-locale` | — | [`packages/client/locale/src/index.ts`](../packages/client/locale/src/index.ts) |
 | `@deepseek-ai/dsh-client-modules` | `loader` | [`packages/client/modules/src/index.ts`](../packages/client/modules/src/index.ts) |
@@ -4915,6 +4960,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-client-ui-directory-picker-browse` | — | [`packages/client/ui-directory-picker-browse/src/index.ts`](../packages/client/ui-directory-picker-browse/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-directory-picker-native` | — | [`packages/client/ui-directory-picker-native/src/index.ts`](../packages/client/ui-directory-picker-native/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-entry-customization` | — | [`packages/client/ui-entry-customization/src/index.ts`](../packages/client/ui-entry-customization/src/index.ts) |
+| `@deepseek-ai/dsh-client-ui-expert` | — | [`packages/client/ui-expert/src/index.ts`](../packages/client/ui-expert/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-file-actions` | — | [`packages/client/ui-file-actions/src/index.ts`](../packages/client/ui-file-actions/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-file-drag` | — | [`packages/client/ui-file-drag/src/index.ts`](../packages/client/ui-file-drag/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-goal` | — | [`packages/client/ui-goal/src/index.ts`](../packages/client/ui-goal/src/index.ts) |
@@ -4940,6 +4986,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-client-ui-settings-plugins` | — | [`packages/client/ui-settings-plugins/src/index.ts`](../packages/client/ui-settings-plugins/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-settings-session-log` | — | [`packages/client/ui-settings-session-log/src/index.ts`](../packages/client/ui-settings-session-log/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-settings-shell` | — | [`packages/client/ui-settings-shell/src/index.ts`](../packages/client/ui-settings-shell/src/index.ts) |
+| `@deepseek-ai/dsh-client-ui-settings-skills` | — | [`packages/client/ui-settings-skills/src/index.ts`](../packages/client/ui-settings-skills/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-settings-subagent` | — | [`packages/client/ui-settings-subagent/src/index.ts`](../packages/client/ui-settings-subagent/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-settings-web-search` | — | [`packages/client/ui-settings-web-search/src/index.ts`](../packages/client/ui-settings-web-search/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-shortcuts` | — | [`packages/client/ui-shortcuts/src/index.ts`](../packages/client/ui-shortcuts/src/index.ts) |

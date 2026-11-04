@@ -270,6 +270,11 @@ function modelFor(remote = new FakeWorkspaceRemote()): ClientWorkspaceModel {
   return new ClientWorkspaceModel(remote)
 }
 
+/** Layout holding the given Workspaces at the top level, in order. */
+function layout(topLevelWorkspaceIds: readonly WorkspaceId[]): WorkspaceLayout {
+  return { topLevelWorkspaceIds, groups: [] }
+}
+
 function baseline(
   model: ClientWorkspaceModel,
   items: readonly WorkspaceView[] = [],

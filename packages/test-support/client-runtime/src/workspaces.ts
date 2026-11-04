@@ -78,6 +78,7 @@ export class TestWorkspaces implements IWorkspaces {
       title: input.path,
       path: input.path,
       sessionIds: [],
+      folders: [],
     } as unknown as WorkspaceView
   }
 
@@ -102,7 +103,7 @@ export class TestWorkspaces implements IWorkspaces {
     this.calls.push({ method: 'rename', args: [workspaceId, title] })
     const stub = this.stubs.get('rename')
     if (stub !== undefined) return await (stub(workspaceId, title) as Promise<WorkspaceView>)
-    return { workspaceId, title, path: `/${title}`, sessionIds: [] } as unknown as WorkspaceView
+    return { workspaceId, title, path: `/${title}`, sessionIds: [], folders: [] } as unknown as WorkspaceView
   }
 
   /**
@@ -135,7 +136,7 @@ export class TestWorkspaces implements IWorkspaces {
     this.calls.push({ method: 'insertSessionBefore', args: [workspaceId, sessionId, beforeSessionId] })
     const stub = this.stubs.get('insertSessionBefore')
     if (stub !== undefined) return await (stub(workspaceId, sessionId, beforeSessionId) as Promise<WorkspaceView>)
-    return { workspaceId, title: '', path: '', sessionIds: [sessionId] } as unknown as WorkspaceView
+    return { workspaceId, title: '', path: '', sessionIds: [sessionId], folders: [] } as unknown as WorkspaceView
   }
 
   /**
@@ -167,7 +168,7 @@ export class TestWorkspaces implements IWorkspaces {
     if (stub !== undefined) return await (stub(title) as Promise<WorkspaceGroupView>)
     return {
       groupId: `group-${title}` as GroupId, title, workspaceIds: [], createdAt: '', updatedAt: '',
-    } as unknown as WorkspaceGroupView
+    }
   }
 
   /**
@@ -182,7 +183,7 @@ export class TestWorkspaces implements IWorkspaces {
     if (stub !== undefined) return await (stub(groupId, title) as Promise<WorkspaceGroupView>)
     return {
       groupId, title, workspaceIds: [], createdAt: '', updatedAt: '',
-    } as unknown as WorkspaceGroupView
+    }
   }
 
   /**
@@ -217,7 +218,7 @@ export class TestWorkspaces implements IWorkspaces {
     if (stub !== undefined) return await (stub(workspaceId, title) as Promise<WorkspaceFolderView>)
     return {
       folderId: `folder-${title}` as FolderId, title, sessionIds: [], createdAt: '', updatedAt: '',
-    } as unknown as WorkspaceFolderView
+    }
   }
 
   /**

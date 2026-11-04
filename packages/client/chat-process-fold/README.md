@@ -25,7 +25,7 @@ Fold each tool call and each finished reasoning step into its own chat row, and 
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount `@deepseek-ai/dsh-client-chat-process-fold` in a Web composition that already provides chat, conversation, settings, and locale. Folding starts on. Turn it off in General Settings with the `chat-process-fold.enabled` switch, or set the client plugin `enabled` field to `false` to fold nothing and publish no preference.
+Mount `@deepseek-ai/dsh-client-chat-process-fold` in a Web composition that already provides chat, conversation, settings, and locale. Folding starts on. Turn it off in General Settings with the switch, which persists as the volatile `enabled` field of the `ui-chat-process-fold` profile entry (the package's Host half declares it), or set the client plugin `enabled` field to `false` to fold nothing and publish no preference.
 
 | Field | Default | Meaning |
 | --- | --- | --- |

@@ -37,7 +37,7 @@ export const Config = Schema.object({
 })
 
 /** Services required for the fold box and its settings row. */
-export const inject = ['slots', 'uiConversation', 'locale', 'settingsScope']
+export const inject = ['slots', 'uiConversation', 'locale', 'configForms']
 
 /**
  * Mount the process-fold surface and its settings toggle.
@@ -47,7 +47,7 @@ export const inject = ['slots', 'uiConversation', 'locale', 'settingsScope']
 export function apply(ctx: ClientContext, config: Config): void {
   if (config.enabled === false) return
   const policy = new ProcessFoldPolicy(
-    ctx.settingsScope.bind<ChatProcessFoldSettings>({ namespace: NAMESPACE }),
+    ctx.configForms.get<ChatProcessFoldSettings>(NAMESPACE),
   )
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'chat-process-fold: dictionaries')
 

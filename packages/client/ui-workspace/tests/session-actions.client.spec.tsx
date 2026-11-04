@@ -63,9 +63,10 @@ const sessions: SessionListState = {
 // arrives through its injected Set hooks, never through this seat.
 const workspaces: WorkspaceSnapshot = {
   items: [{
-    workspaceId: 'alpha' as WorkspaceId, path: '/projects/alpha', title: 'alpha', sessionIds: [one.id],
+    workspaceId: 'alpha' as WorkspaceId, path: '/projects/alpha', title: 'alpha', sessionIds: [one.id], folders: [],
     createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
   }],
+  topLevelWorkspaceIds: ['alpha' as WorkspaceId], groups: [],
   archivedSessionIds: [], pinnedSessionIds: [], state: 'idle', phase: 'ready', error: null,
 }
 const noStatus: SessionStatusSnapshot = new Map()

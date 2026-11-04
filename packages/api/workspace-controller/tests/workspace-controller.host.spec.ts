@@ -332,7 +332,7 @@ describe('WorkspaceController commands', () => {
 })
 
 describe('WorkspaceController follow', () => {
-  it('seeds a new feed from existing rows and rejects an inconsistent registry commit', async () => {
+  it('seeds a new feed from existing rows and withholds a registry commit that is not yet whole', async () => {
     const { ctx, root } = await harness()
     const existing = await ctx.workspaceRegistry.create(stageDir(root, 'existing'))
     const feed = new WorkspaceFeed(ctx)
@@ -342,6 +342,7 @@ describe('WorkspaceController follow', () => {
       groups: [],
     })
 
+    // A commit naming a Workspace whose row has not arrived leaves the published layout untouched.
     expect(() => {
       ctx.emit('domain/changed', {
         domain: 'workspace',
@@ -355,7 +356,7 @@ describe('WorkspaceController follow', () => {
           pinnedSessionIds: [],
         },
       })
-    }).toThrow('references missing Workspace "missing"')
+    }).not.toThrow()
     expect(feed.baseline()).toMatchObject({
       items: [{ workspaceId: existing.id }],
       topLevelWorkspaceIds: [existing.id],
@@ -675,10 +676,12 @@ describe('WorkspaceController follow', () => {
     await expect(nextFrame(iterator)).resolves.toEqual({ type: 'archived', archivedSessionIds: [] })
     await expect(nextFrame(iterator)).resolves.toEqual({ type: 'archived', archivedSessionIds: [shared.id] })
     await controller.delete({ workspaceId: hiddenId })
-    await expect(nextFrame(iterator)).resolves.toEqual({ type: 'order', workspaceIds: [shownId] })
+    await expect(nextFrame(iterator)).resolves.toEqual({
+      type: 'layout', layout: { topLevelWorkspaceIds: [shownId], groups: [] },
+    })
     await controller.delete({ workspaceId: shownId })
-    await expect(nextFrame(iterator)).resolves.toEqual({ type: 'order', workspaceIds: [] })
     await expect(nextFrame(iterator)).resolves.toEqual({ type: 'remove', workspaceId: shownId })
+    await expect(nextFrame(iterator)).resolves.toEqual({ type: 'layout', layout: { topLevelWorkspaceIds: [], groups: [] } })
 
     abort.abort()
     await expect(iterator.next()).resolves.toEqual({ done: true, value: undefined })
@@ -719,7 +722,7 @@ describe('WorkspaceController follow', () => {
     expect(ids(empty)).toEqual([])
     // A deletion reaches only a Client that received the Workspace.
     await controller.delete({ workspaceId: third })
-    await expect(nextFrame(iterator)).resolves.toEqual({ type: 'order', workspaceIds: [] })
+    await expect(nextFrame(iterator)).resolves.toEqual({ type: 'layout', layout: { topLevelWorkspaceIds: [], groups: [] } })
 
     // Restored: the Workspace reappears through an ordinary upsert.
     allowedWorkspaces.add(first)

@@ -33,7 +33,7 @@ Each row shows the skill name, its description, and the discovery source (`user-
 
 ### Enabling and disabling
 
-The switch on each row writes the skill name into the `disabled` list of the `skills` settings namespace as one revision-fenced write. The row follows the live settings value, so the switch flips without waiting for another inventory read. When the connection cannot write settings (a remote browser in memory mode), every switch and Add skill are disabled and the page says so.
+The switch on each row writes the skill name into the volatile `disabled` field of the `skill` profile entry as one revision-fenced write. The row follows the live settings value, so the switch flips without waiting for another inventory read. When the connection cannot write settings (a remote browser in memory mode), every switch and Add skill are disabled and the page says so.
 
 ### Adding a skill
 
@@ -51,11 +51,11 @@ The page is one localized `settings.section` contribution with id `skills`, orde
 
 ### State and data sources
 
-`SkillsController` owns one snapshot store. It joins two sources: the `skills.inventory` Remote result (every skill including disabled ones, read on demand) and the bound `skills` settings scope (the `disabled` list and writability). The `enabled` flag of a row is recomputed from the scope on every scope change, so toggling never depends on a second Remote read. `reload()` re-reads the inventory after `connection/reset`, and only when the page has read it before. A read superseded by a newer one is aborted and its result dropped.
+`SkillsController` owns one snapshot store. It joins two sources: the `skills.inventory` Remote result (every skill including disabled ones, read on demand) and the `ConfigForm` of the `skill` entry (the `disabled` list and writability). The `enabled` flag of a row is recomputed from the form on every form change, so toggling never depends on a second Remote read. `reload()` re-reads the inventory after `connection/reset`, and only when the page has read it before. A read superseded by a newer one is aborted and its result dropped.
 
 ### Host counterpart
 
-The `skills` Remote namespace lives in `@deepseek-ai/dsh-api-session-controller` (`SessionSkillCatalog`). It registers the `skills` settings namespace (`disabled`, `dirs`), a `user-added` filesystem provider fed by `dirs`, and the registry hidden-name source that applies `disabled` to every consumer. The client spells the namespace name locally because a client package must not depend on a Host package.
+The `skills` Remote namespace lives in `@deepseek-ai/dsh-api-session-controller` (`SessionSkillCatalog`). `disabled` and `dirs` are volatile fields of the `SkillRegistry` Config (the `skill` profile entry); the catalog service registers a `user-added` filesystem provider fed by `dirs` and the registry hidden-name source that applies `disabled` to every consumer. The client spells the entry id `skill` locally because a client package must not depend on a Host package.
 
 ### Source map
 

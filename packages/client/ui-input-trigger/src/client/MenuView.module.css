@@ -305,8 +305,9 @@
   max-height: calc(100% - 8px);
   padding: 4px;
   overflow-y: auto;
-  border-radius: 16px;
+  border-radius: var(--dsw-radius-lg);
   background: var(--dsw-specific-menu);
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
   --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
   box-shadow: var(--dsw-elevation-prominent);
 }

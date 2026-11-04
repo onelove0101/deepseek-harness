@@ -12,14 +12,14 @@
     { "path": "../../api/remotes/tsconfig.client.json" },
     { "path": "../../api/session-controller/tsconfig.client.json" },
     { "path": "../../core/session" },
-    { "path": "../locale" },
+    { "path": "../locale/tsconfig.client.json" },
     { "path": "../store" },
     { "path": "../ui-commands" },
-    { "path": "../ui-conversation" },
+    { "path": "../ui-conversation/tsconfig.client.json" },
     { "path": "../ui-input-trigger" },
     { "path": "../ui-primitives" },
     { "path": "../ui-renderer" },
-    { "path": "../ui-settings" },
+    { "path": "../ui-settings/tsconfig.client.json" },
     { "path": "../ui-slots" }
   ]
 }

@@ -18,7 +18,7 @@ function bench() {
   ctx.provide('locale', locale)
   locale.register('workspace', { en, zh }); locale.setLocale('en')
   const list = createSnapshotStore<WorkspaceSnapshot>({
-    items: [], pinnedSessionIds: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
+    items: [], topLevelWorkspaceIds: [], groups: [], pinnedSessionIds: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
   })
   ctx.provide('workspaces', { list } as never)
   const permissions = new Map<string, ReturnType<typeof createSnapshotStore<boolean>>>()

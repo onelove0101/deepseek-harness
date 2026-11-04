@@ -42,6 +42,8 @@ Load the plugin like any Cordis plugin. The only configuration limits how many c
 | Field | Default | Meaning |
 |---|---|---|
 | `collectCacheMaxEntries` | `128` | Completed cwd/provider catalogs kept in memory |
+| `disabled` | `[]` | Volatile. Skill names the user turned off; hidden from every consumer |
+| `dirs` | `[]` | Volatile. Absolute directories the user added, each holding one `SKILL.md` |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-skill) is the exhaustive source for every accepted field.
 

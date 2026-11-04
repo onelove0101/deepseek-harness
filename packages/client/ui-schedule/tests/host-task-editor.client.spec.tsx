@@ -35,11 +35,11 @@ const sessions: SessionListState = {
     updatedAt: 0, retainedBy: {} } },
 }
 const workspaces: WorkspaceSnapshot = {
-  items: [], archivedSessionIds: [], pinnedSessionIds: [], state: 'idle', phase: 'ready', error: null,
+  items: [], topLevelWorkspaceIds: [], groups: [], archivedSessionIds: [], pinnedSessionIds: [], state: 'idle', phase: 'ready', error: null,
 }
 function workspace(path: string, title: string): WorkspaceSnapshot['items'][number] {
   return {
-    workspaceId: `workspace:${title}` as WorkspaceId, path, title, sessionIds: [], createdAt: task.createdAt ?? '', updatedAt: task.updatedAt ?? '',
+    workspaceId: `workspace:${title}` as WorkspaceId, path, title, sessionIds: [], folders: [], createdAt: task.createdAt ?? '', updatedAt: task.updatedAt ?? '',
   }
 }
 const registered: WorkspaceSnapshot = {

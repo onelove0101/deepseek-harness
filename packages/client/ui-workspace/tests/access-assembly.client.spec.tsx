@@ -69,8 +69,9 @@ async function bench(access: ClientAccessState, options: { ungroupedSession?: Se
   await runtime.workspaces.update((draft) => {
     draft.items = [{
       workspaceId: WORKSPACE, title: 'Project', path: '/projects/project',
-      sessionIds: [], createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+      sessionIds: [], folders: [], createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
     }] as never
+    draft.topLevelWorkspaceIds = [WORKSPACE] as never
   })
   await runtime.root.declare(
     { 'sidebar.workspaces': { kind: 'single', scope: 'root', inject: SECTION_INJECT } } as never,

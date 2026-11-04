@@ -71,7 +71,7 @@ Expert、文档与知识库是 `experts` storage domain 的三张表，因此沿
 
 ### 调用
 
-`agent/pre-step` 监听器先调用 `next()`，忽略被拒绝的步骤，读取开头的提及，并在 `maxInvocationLibraryBytes` 限制内解析 Expert、其 skill 与文档库文本；该限制约束整条渲染后消息的 UTF-8 字节数。skill 正文按顺序在放得下时加载，第一个放不下的及其后所有 skill 被列为不可用；文档库文档随后按整篇占用剩余字节，被舍弃的文档标题在放得下时列出。已存储的 Soul 若不再放得下，该步以 `RangeError` 失败。它向该步的决策追加一条 `user/message`，因此 Session 日志保存了确切的注入文本。消息来源是 `{ kind: 'plugin', plugin: 'expert', form: 'instructions' }`，属于消息来源联合中已有的成员，所以无需更改 Session 格式。文档库文本经过 XML 转义，并被标注为不可信的参考材料。
+`agent/pre-step` 监听器先调用 `next()`，忽略被拒绝的步骤，读取开头的提及，并在 `maxInvocationLibraryBytes` 限制内解析 Expert、其 skill 与文档库文本；该限制约束整条渲染后消息的 UTF-8 字节数。skill 正文按顺序在放得下时加载，第一个放不下的及其后所有 skill 被列为不可用；文档库文档随后按整篇占用剩余字节，被舍弃的文档标题在放得下时列出。已存储的 Soul 若不再放得下，该步以 `RangeError` 失败。它向该步的决策追加一条 `user/message`，因此 Session 日志保存了确切的注入文本。消息来源是 `{ kind: 'expert-invocation', form: 'instructions' }`，是消息来源联合中由该插件自有的成员；该新增 kind 只增不改，旧 Session 无需迁移。文档库文本经过 XML 转义，并被标注为不可信的参考材料。
 
 ### 源码地图
 

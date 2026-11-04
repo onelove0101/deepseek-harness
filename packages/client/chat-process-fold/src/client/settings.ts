@@ -5,10 +5,10 @@
  */
 
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 
 /** Durable settings namespace owned by this plugin. */
-export const NAMESPACE = 'chat-process-fold'
+export const NAMESPACE = 'ui-chat-process-fold'
 
 /** Field name of the enable switch. */
 export const ENABLED_FIELD = 'enabled'
@@ -30,9 +30,9 @@ export class ProcessFoldPolicy {
   readonly enabled: SnapshotStore<boolean> = createSnapshotStore(DEFAULT_ENABLED)
 
   /**
-   * @param host - durable chat-process-fold settings scope.
+   * @param host - durable chat-process-fold settings form.
    */
-  constructor(private readonly host: SettingsScope<ChatProcessFoldSettings>) {
+  constructor(private readonly host: ConfigForm<ChatProcessFoldSettings>) {
     host.subscribe(() => { this.adopt() })
     this.adopt()
   }

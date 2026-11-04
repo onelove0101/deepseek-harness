@@ -33,7 +33,7 @@ kind: "package-reference"
 
 ### 启用与禁用
 
-每行的开关会把 skill 名称写入 `skills` 设置命名空间的 `disabled` 列表，作为一次带修订号保护的写入。行状态跟随实时设置值，所以开关无需等待再次读取清单即可翻转。当连接无法写入设置（处于内存模式的远程浏览器）时，所有开关和“添加技能”都会被禁用，页面也会给出说明。
+每行的开关会把 skill 名称写入 `skill` 配置条目的 `disabled` 字段（volatile），作为一次带修订号保护的写入。行状态跟随实时设置值，所以开关无需等待再次读取清单即可翻转。当连接无法写入设置（处于内存模式的远程浏览器）时，所有开关和“添加技能”都会被禁用，页面也会给出说明。
 
 ### 添加技能
 
@@ -51,11 +51,11 @@ kind: "package-reference"
 
 ### 状态与数据来源
 
-`SkillsController` 拥有一个快照 store，并合并两个来源：`skills.inventory` Remote 的结果（包含已禁用 skill，按需读取）和已绑定的 `skills` 设置 scope（`disabled` 列表和可写性）。每行的 `enabled` 标志在 scope 每次变化时重新计算，因此切换开关不依赖第二次 Remote 读取。`reload()` 在 `connection/reset` 之后重新读取清单，且仅在页面此前读取过时才执行。被更新读取取代的读取会被中止，其结果被丢弃。
+`SkillsController` 拥有一个快照 store，并合并两个来源：`skills.inventory` Remote 的结果（包含已禁用 skill，按需读取）和 `skill` 条目的 `ConfigForm`（`disabled` 列表和可写性）。每行的 `enabled` 标志在表单每次变化时重新计算，因此切换开关不依赖第二次 Remote 读取。`reload()` 在 `connection/reset` 之后重新读取清单，且仅在页面此前读取过时才执行。被更新读取取代的读取会被中止，其结果被丢弃。
 
 ### Host 端对应实现
 
-`skills` Remote 命名空间位于 `@deepseek-ai/dsh-api-session-controller`（`SessionSkillCatalog`）。它注册 `skills` 设置命名空间（`disabled`、`dirs`）、由 `dirs` 驱动的 `user-added` 文件系统提供方，以及把 `disabled` 应用到所有消费方的注册表隐藏名称来源。客户端在本地拼写该命名空间名称，因为客户端包不得依赖 Host 包。
+`skills` Remote 命名空间位于 `@deepseek-ai/dsh-api-session-controller`（`SessionSkillCatalog`）。`disabled` 与 `dirs` 是 `SkillRegistry` Config 的 volatile 字段（`skill` 配置条目）；目录服务注册由 `dirs` 驱动的 `user-added` 文件系统提供方，以及把 `disabled` 应用到所有消费方的注册表隐藏名称来源。客户端在本地拼写条目 id `skill`，因为客户端包不得依赖 Host 包。
 
 ### 源码地图
 
@@ -99,7 +99,7 @@ kind: "package-reference"
 以下限制界定了本页能够管理的内容；它们是当前包的约束。
 
 - **不列出项目 skill** — 读取清单时不带工作区目录，所以位于项目 `.dsh/skills` 或 `.agents/skills` 下的 skill 不会出现在这里；不过此处被列为禁用的名称同样会隐藏同名的项目 skill。
-- **页面无法移除已添加的目录** — “添加技能”会向 `skills` 设置命名空间的 `dirs` 列表追加条目；移除条目需要编辑设置文档。
+- **页面无法移除已添加的目录** — “添加技能”会向 `skill` 条目的 `dirs` 字段追加条目；移除条目需要编辑设置文档。
 - **添加需要 Host 机器上的路径** — 路径由 Host 读取，而不是从浏览器上传。
 
 <a id="dev-note"></a>

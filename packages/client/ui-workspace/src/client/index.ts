@@ -51,6 +51,7 @@ import { createWorkspaceViewStore } from './stores.ts'
 import { WorkspaceBrowser } from './rows/WorkspaceBrowser.tsx'
 import { ArchiveSessionRowButton, SessionArchiveConfirmDialog } from './session-actions/ArchiveSession.tsx'
 import { derive } from './session-actions/derived.ts'
+import { registerOrganizationMenus } from './organization-menus.ts'
 import { registerSessionMenus } from './session-actions/context-menus.tsx'
 import { PinSessionRowButton } from './session-actions/PinSession.tsx'
 import { SessionRenameDialog } from './session-actions/RenameSession.tsx'
@@ -268,6 +269,10 @@ export function apply(ctx: Context): void {
     if (workspace === undefined || !ctx.remoteAccess.source('workspace', workspaceId, `workspace/${action}`).getSnapshot()) return
     workspaceActionRequest.set({ action, workspaceId, displayTitle, storedTitle: workspace.title })
   }
+  registerOrganizationMenus(ctx, {
+    requestWorkspaceAction: (request) => { workspaceActionRequest.set(request) },
+    workspaces,
+  })
   ctx.slots.inject('contextMenu.icon', function* () {
     for (const [key, Icon] of Object.entries({
       'workspace.rename': IconEditOutlineRegular, 'workspace.delete': IconTrashOutlineRegular,
@@ -293,6 +298,16 @@ export function apply(ctx: Context): void {
       if (mode === 'toggle' && target?.kind === 'workspace' && target.value.workspaceId === workspaceId) ctx.contextMenus.close()
       else ctx.contextMenus.open({ kind: 'workspace', value: { workspaceId, path, displayTitle } }, point)
     },
+    openGroupMenu: (groupId, displayTitle, point, mode) => {
+      const target = ctx.contextMenus.active.getSnapshot()
+      if (mode === 'toggle' && target?.kind === 'workspaceGroup' && target.value.groupId === groupId) ctx.contextMenus.close()
+      else ctx.contextMenus.open({ kind: 'workspaceGroup', value: { groupId, displayTitle } }, point)
+    },
+    openFolderMenu: (workspaceId, folderId, displayTitle, point, mode) => {
+      const target = ctx.contextMenus.active.getSnapshot()
+      if (mode === 'toggle' && target?.kind === 'workspaceFolder' && target.value.folderId === folderId) ctx.contextMenus.close()
+      else ctx.contextMenus.open({ kind: 'workspaceFolder', value: { workspaceId, folderId, displayTitle } }, point)
+    },
     settleWorkspaceAction: () => { workspaceActionRequest.set(null) },
     openSessionMenu: (sessionId, displayTitle, point, mode) => {
       const target = ctx.contextMenus.active.getSnapshot()
@@ -312,15 +327,11 @@ export function apply(ctx: Context): void {
     createGroup: async (title) => { await workspaces.createGroup(title) },
     renameGroup: async (groupId, title) => { await workspaces.renameGroup(groupId, title) },
     deleteGroup: async (groupId) => { await workspaces.deleteGroup(groupId) },
-    moveToGroup: async (workspaceId, groupId) => { await workspaces.moveToGroup(workspaceId, groupId) },
     createFolder: async (workspaceId, title) => { await workspaces.createFolder(workspaceId, title) },
     renameFolder: async (workspaceId, folderId, title) => {
       await workspaces.renameFolder(workspaceId, folderId, title)
     },
     deleteFolder: async (workspaceId, folderId) => { await workspaces.deleteFolder(workspaceId, folderId) },
-    moveSessionToFolder: async (workspaceId, sessionId, folderId) => {
-      await workspaces.moveSessionToFolder(workspaceId, sessionId, folderId)
-    },
     insertWorkspaceBefore: async (workspaceId, beforeWorkspaceId) => {
       await workspaces.insertBefore(workspaceId, beforeWorkspaceId)
     },

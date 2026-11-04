@@ -123,6 +123,25 @@ export const VIEWER_ENDPOINT_CLASSES = {
   'directoryPicker/createDirectory': 'owner-only', // owner filesystem picker
   'directoryPicker/list': 'owner-only', // owner filesystem picker
   'directoryPicker/pick': 'owner-only', // owner filesystem picker
+  'experts/list': 'owner-only', // owner reads their private Expert library
+  'experts/ranked': 'owner-only', // owner ranks their private Experts
+  'experts/saveExpert': 'owner-only', // owner saves an Expert
+  'experts/deleteExpert': 'owner-only', // owner deletes an Expert
+  'experts/createDocument': 'owner-only', // owner adds a library document
+  'experts/deleteDocument': 'owner-only', // owner deletes a library document
+  'experts/saveKnowledgeBase': 'owner-only', // owner saves a knowledge base
+  'experts/deleteKnowledgeBase': 'owner-only', // owner deletes a knowledge base
+  'skills/inventory': 'owner-only', // owner reads the host-wide skill inventory
+  'skills/add': 'owner-only', // owner adds a skill directory
+  'session/deleteSession': 'owner-only', // owner permanently deletes a Session
+  'workspace/createGroup': 'owner-only', // owner creates a Workspace Group
+  'workspace/renameGroup': 'owner-only', // owner renames a Workspace Group
+  'workspace/deleteGroup': 'owner-only', // owner dissolves a Workspace Group
+  'workspace/moveToGroup': 'owner-only', // owner files a Workspace into a Group
+  'workspace/createFolder': 'owner-only', // owner creates a Folder
+  'workspace/renameFolder': 'owner-only', // owner renames a Folder
+  'workspace/deleteFolder': 'owner-only', // owner deletes a Folder
+  'workspace/moveSessionToFolder': 'owner-only', // owner files a Session into a Folder
   'workspace/archiveSession': 'owner-only', // owner archives a Session
   'workspace/create': 'owner-only', // owner creates a Workspace
   'workspace/delete': 'owner-only', // owner deletes a Workspace

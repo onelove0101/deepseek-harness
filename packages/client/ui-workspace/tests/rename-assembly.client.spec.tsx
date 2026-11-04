@@ -80,8 +80,9 @@ async function seedWorkspace(runtime: SlotTestRuntime): Promise<void> {
   await runtime.workspaces.update((draft) => {
     draft.items = [{
       workspaceId: 'w1' as WorkspaceId, title: 'alpha', path: '/w/alpha',
-      sessionIds: [SID], createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+      sessionIds: [SID], folders: [], createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
     }] as never
+    draft.topLevelWorkspaceIds = ['w1'] as never
   })
 }
 
@@ -243,10 +244,7 @@ describe('session rename through the assembled browser', () => {
       }] as never
       draft.topLevelWorkspaceIds = ['w1'] as never
     })
-    await runtime.root.declare(
-      { 'sidebar.workspaces': { kind: 'single', scope: 'root' } } as never,
-      SidebarFrame as never,
-    )
+    await declareFrame(runtime)
     await runtime.mount({ inject: [...inject], apply })
     const view = runtime.renderRoot()
 

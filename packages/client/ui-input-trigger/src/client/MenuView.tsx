@@ -244,7 +244,7 @@ export function MenuView({
                         )}
                         {item.description !== undefined && <span className={css.itemDescription}>{item.description}</span>}
                         {item.submenu === true && (
-                          <span className={css.submenuChevron} aria-hidden><IconChevronRightOutline14 /></span>
+                          <span className={css.submenuChevron} aria-hidden><IconChevronRightOutlineRegular size={14} /></span>
                         )}
                         {item.drill === true && (
                           <span className={css.trailing}>

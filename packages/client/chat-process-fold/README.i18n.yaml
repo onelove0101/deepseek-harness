@@ -1,6 +1,37 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/client/chat-process-fold/README.md
-README.md: 15e60bc855e497f10b087a25775f62f75c6791f1
-README.zh.md: 980ba0b9f91dd5c3d199c896611391820a934ba7
+/:
+  en: 7e8390d9f7488b03
+  zh: c1f3c334aa613b4f
+/deepseek-ai-dsh-client-chat-process-fold:
+  en: 47598a68638f982a
+  zh: 20f42c0c106fbb36
+/deepseek-ai-dsh-client-chat-process-fold/summary:
+  en: 7582836dce9a314f
+  zh: 59d91ecce859af8b
+/deepseek-ai-dsh-client-chat-process-fold/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: be08589a8d2e121d
+/deepseek-ai-dsh-client-chat-process-fold/use-this-package:
+  en: 94aec88c26b04fbd
+  zh: 3fdca7cdeff0fb78
+/deepseek-ai-dsh-client-chat-process-fold/understand-the-implementation:
+  en: 14d17d1701d0a4c4
+  zh: f2622f8479f82ad9
+/deepseek-ai-dsh-client-chat-process-fold/further-exploration:
+  en: b4a2825cef00cfb9
+  zh: 6bc24c5475727afb
+/deepseek-ai-dsh-client-chat-process-fold/model-experience:
+  en: ebf25c822373d300
+  zh: fea70f8daf75e130
+/deepseek-ai-dsh-client-chat-process-fold/model-experience/kv-cache-effect:
+  en: ca75c51c89c2c9b0
+  zh: 52a4f7c67ab50986
+/deepseek-ai-dsh-client-chat-process-fold/known-limitations-and-deferred-work:
+  en: b44e8ef5ceeb52e7
+  zh: 24d1aac8eee8b744
+/deepseek-ai-dsh-client-chat-process-fold/known-limitations-and-deferred-work/dev-note:
+  en: 1130ddf63eacfbae
+  zh: 2604886691124545

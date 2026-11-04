@@ -1,14 +1,14 @@
 /** Skills page state: the host inventory joined with the settings-backed disabled list. */
 
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { SkillInventoryEntry, SkillInventoryValue } from '@deepseek-ai/dsh-api-remotes/client'
 
 /**
  * Namespace of the skill preferences. Spelled here rather than imported: a
  * client package must not depend on a Host package.
  */
-export const SKILLS_NS = 'skills'
+export const SKILLS_NS = 'skill'
 
 /** Skill preference fields this page edits. */
 export interface SkillsSettings {
@@ -82,7 +82,7 @@ export class SkillsController {
    */
   constructor(
     private readonly remote: SkillsRemote,
-    private readonly scope: SettingsScope<SkillsSettings>,
+    private readonly scope: ConfigForm<SkillsSettings>,
   ) {}
 
   /**

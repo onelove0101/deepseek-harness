@@ -382,11 +382,10 @@ describe('workspace browser rows', () => {
   it('marks only running session rows with the aurora-border class', () => {
     const node: SessionNode = {
       id: sid('running'), title: 'Running Session', blank: false, running: true,
-      runningSubagentCount: 0, completed: false, hasActiveSchedule: false, updatedAt: 0,
+      runningSubagentCount: 0, completed: false, updatedAt: 0, pinned: false, archived: false,
     }
     const view = render(
-      <SessionNodeItem node={node} currentId={undefined} now={0} onOpen={vi.fn()}
-        onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} t={t} />,
+      <SessionNodeItem node={node} currentId={undefined} now={0} onOpen={vi.fn()} t={t} />,
     )
     const runningRow = screen.getByRole('treeitem')
     expect(runningRow.classList.contains(runningClass)).toBe(true)
@@ -395,16 +394,13 @@ describe('workspace browser rows', () => {
     // activity keeps the status dot but must not light the border.
     view.rerender(
       <SessionNodeItem node={{ ...node, running: false, runningSubagentCount: 1 }}
-        currentId={undefined} now={0} onOpen={vi.fn()}
-        onRename={vi.fn()} onFork={vi.fn()} onArchive={vi.fn()} t={t} />,
+        currentId={undefined} now={0} onOpen={vi.fn()} t={t} />,
     )
     const delegatedRow = screen.getByRole('treeitem')
     expect(delegatedRow.classList.contains(runningClass)).toBe(false)
     expect(delegatedRow.querySelector('[data-state="ongoing"]')).not.toBeNull()
   })
 
-  it('keeps the active-Schedule marker between the title and time in grouped and flat rows', () => {
-    const onOpen = vi.fn()
   it('keeps a row.action entry click in the strip, so a plain button does not open the row', () => {
     const node: SessionNode = {
       id: sid('session'), title: 'Session', blank: false, running: false,
@@ -773,6 +769,64 @@ describe('workspace browser rows', () => {
     expect(onRenameRequest).toHaveBeenCalledWith(sid('s1'), 'One')
   })
 
+  it('workspace hover card shows its details and copies the full directory path', async () => {
+    vi.useFakeTimers()
+    const writeText = vi.fn(async () => {})
+    const restoreClipboard = installClipboard(writeText)
+    try {
+      const group: GroupNode = {
+        key: 'project', workspaceId: wid('project'), cwd: '/projects/project', createdAt: 0, label: 'Project',
+        sessionCount: 0, expanded: false, containsCurrent: false, sessions: [],
+      }
+      render(<ProjectRowItem group={group} onToggle={vi.fn()} onCreate={vi.fn()} t={t} />)
+      fireEvent.pointerEnter(screen.getByRole('treeitem').parentElement as HTMLElement)
+      act(() => { vi.advanceTimersByTime(800) })
+      // Card body: full title + cwd + absolute creation time.
+      expect(screen.getAllByText('Project')).toHaveLength(2)
+      expect(screen.getByText('/projects/project')).toBeTruthy()
+      expect(screen.getByText(/^创建于 \d+年\d+月\d+日 /)).toBeTruthy()
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '复制: /projects/project' })) })
+      expect(writeText).toHaveBeenCalledWith('/projects/project')
+      expect(screen.getByRole('status').textContent).toBe('已复制')
+    } finally {
+      restoreClipboard()
+      vi.useRealTimers()
+    }
+  })
+
+  it.each(['hover', 'focus'] as const)('keeps workspace details alongside the new Session tooltip on %s', (trigger) => {
+    vi.useFakeTimers()
+    try {
+      const group: GroupNode = {
+        key: 'project', workspaceId: wid('project'), cwd: '/projects/project', createdAt: 0, label: 'Project',
+        sessionCount: 0, expanded: false, containsCurrent: false, sessions: [],
+      }
+      render(<ProjectRowItem group={group} onToggle={vi.fn()} onCreate={vi.fn()} t={t} />)
+      const row = screen.getByRole('treeitem')
+      const create = screen.getByRole('button', { name: '在“Project”中新建会话' })
+      fireEvent.pointerEnter(row.parentElement as HTMLElement)
+      act(() => { vi.advanceTimersByTime(800) })
+      expect(screen.getByText('/projects/project')).toBeTruthy()
+
+      if (trigger === 'hover') {
+        fireEvent.pointerEnter(create)
+        act(() => { vi.advanceTimersByTime(500) })
+      } else {
+        fireEvent.keyDown(document, { key: 'Tab' })
+        fireEvent.focus(create)
+      }
+      expect(screen.getByRole('tooltip').textContent).toBe('新会话')
+      expect(screen.getByText('/projects/project')).toBeTruthy()
+
+      if (trigger === 'hover') fireEvent.pointerLeave(create, { relatedTarget: row })
+      else fireEvent.blur(create, { relatedTarget: row })
+      expect(screen.queryByRole('tooltip')).toBeNull()
+      expect(screen.getByText('/projects/project')).toBeTruthy()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('shows workspace details and the tooltip when the pointer first enters its new Session action', () => {
     vi.useFakeTimers()
     try {
@@ -797,6 +851,28 @@ describe('workspace browser rows', () => {
     }
   })
 
+  it('workspace hover card shows a POSIX home descendant as ~ and still copies the full path', async () => {
+    vi.useFakeTimers()
+    const writeText = vi.fn(async () => {})
+    const restoreClipboard = installClipboard(writeText)
+    try {
+      const group: GroupNode = {
+        key: 'project', workspaceId: wid('project'), cwd: '/home/u/Documents/project', createdAt: 0, label: 'Project',
+        sessionCount: 0, expanded: false, containsCurrent: false, sessions: [],
+      }
+      render(<ProjectRowItem group={group} home="/home/u" onToggle={vi.fn()} onCreate={vi.fn()} t={t} />)
+      fireEvent.pointerEnter(screen.getByRole('treeitem').parentElement as HTMLElement)
+      act(() => { vi.advanceTimersByTime(800) })
+      expect(screen.getByText('~/Documents/project')).toBeTruthy()
+      expect(screen.queryByText('/home/u/Documents/project')).toBeNull()
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: '复制: /home/u/Documents/project' })) })
+      expect(writeText).toHaveBeenCalledWith('/home/u/Documents/project')
+    } finally {
+      restoreClipboard()
+      vi.useRealTimers()
+    }
+  })
+
   it('workspace hover card without a directory omits the path and copy action', async () => {
     vi.useFakeTimers()
     try {
@@ -813,6 +889,31 @@ describe('workspace browser rows', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('workspace hover card leaves a Windows path verbatim', async () => {
+    vi.useFakeTimers()
+    try {
+      const group: GroupNode = {
+        key: 'project', workspaceId: wid('project'), cwd: 'C:\\Users\\u\\project', createdAt: 0, label: 'Project',
+        sessionCount: 0, expanded: false, containsCurrent: false, sessions: [],
+      }
+      render(<ProjectRowItem group={group} home="C:\\Users\\u" onToggle={vi.fn()} onCreate={vi.fn()} t={t} />)
+      fireEvent.pointerEnter(screen.getByRole('treeitem').parentElement as HTMLElement)
+      act(() => { vi.advanceTimersByTime(800) })
+      expect(screen.getByText('C:\\Users\\u\\project')).toBeTruthy()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('ungrouped bucket renders no workspace menu', () => {
+    const group: GroupNode = {
+      key: '', workspaceId: undefined, cwd: undefined, createdAt: undefined, label: 'Ungrouped',
+      sessionCount: 0, expanded: false, containsCurrent: false, sessions: [],
+    }
+    render(<ProjectRowItem group={group} onToggle={vi.fn()} onCreate={vi.fn()} t={t} />)
+    expect(screen.queryByRole('button', { name: /工作区/ })).toBeNull()
   })
 
   it('blank New Session rows carry no menu, no time label, and no hover-card time', () => {

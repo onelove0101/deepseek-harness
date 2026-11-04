@@ -6,7 +6,7 @@ import type {} from '@deepseek-ai/dsh-api-session-controller/remote'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
-import { SKILLS_NS, SkillsController } from './controller.ts'
+import { SKILLS_NS, SkillsController, type SkillsSettings } from './controller.ts'
 import { SkillsSection } from './SkillsSection.tsx'
 import { en, zh, type SkillsLocaleKey } from './locales.ts'
 
@@ -25,7 +25,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 const NS = 'settings.skills'
 
 /** Services required by the Settings registration, the inventory Remote, and the settings scope. */
-export const inject = ['slots', 'locale', 'remote', 'remote.skills', 'settingsScope']
+export const inject = ['slots', 'locale', 'remote', 'remote.skills', 'configForms']
 
 /** Contribute the Skills page to Settings. */
 export function apply(ctx: ClientContext): void {
@@ -34,7 +34,7 @@ export function apply(ctx: ClientContext): void {
   const t = ctx.locale.bind(NS)
   const controller = new SkillsController(
     ctx.remote.skills,
-    ctx.settingsScope.bind({ namespace: SKILLS_NS }),
+    ctx.configForms.get<SkillsSettings>(SKILLS_NS),
   )
   ctx.effect(() => controller.start(), 'ui-settings-skills: controller')
   ctx.on('connection/reset', () => { void controller.reload() })

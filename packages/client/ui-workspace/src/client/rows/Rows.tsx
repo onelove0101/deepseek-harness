@@ -23,7 +23,8 @@ import {
 import type { ShortcutCatalogEntry } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
 import { abbreviateHomePath } from '@deepseek-ai/dsh-util-workspace-path'
-import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { FolderId, GroupId, WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { ContextMenuTarget } from '@deepseek-ai/dsh-client-ui-context-menu/client'
 import type { WorkspaceBrowserProps } from '../contract/slots.ts'
 import type { GroupNode, SearchResultNode, SessionNode } from '../tree.ts'
 import css from './Rows.module.css'
@@ -362,6 +363,136 @@ function ProjectRow({
       copyText={row.cwd}
       copyLabel={t('copy')}
       copiedLabel={t('hover.copied')}
+    />
+  )
+}
+
+/** Facts shared by the Group and Folder header rows. */
+type OrganizationRowProps = {
+  title: string
+  expanded: boolean
+  /** The selected Session lives under this row, so a collapsed row stays highlighted. */
+  containsCurrent: boolean
+  /** Sessions (Folder) or Workspaces (Group) the row holds. */
+  count: number
+  /** Whether the caller may open the row actions. */
+  canManage: boolean
+  /** Accessible name of the actions button. */
+  actionsLabel: string
+  onToggle: () => void
+  /** Open the registered actions beneath the anchor. */
+  onOpenMenu: (point: { x: number; y: number }) => void
+  /** Context-menu target captured by a right-click on the row. */
+  menuTarget: ContextMenuTarget
+  /** Whether that target's menu is open. */
+  menuOpen: boolean
+  rowKey: string
+  useContextMenu: WorkspaceBrowserProps['useContextMenu']
+}
+
+function OrganizationRow({
+  title, expanded, containsCurrent, count, canManage, actionsLabel, onToggle, onOpenMenu, menuTarget, menuOpen, rowKey,
+  useContextMenu,
+}: OrganizationRowProps) {
+  const { getTriggerProps } = useContextMenu()
+  return (
+    <div
+      className={clsx(css.projectRow, menuOpen && css.menuOpen)}
+      data-row-key={rowKey}
+      role="treeitem"
+      aria-expanded={expanded}
+      aria-label={`${title} (${count})`}
+      onClick={onToggle}
+      {...getTriggerProps(canManage ? menuTarget : undefined)}
+    >
+      <span className={clsx(css.slot, css.folder, containsCurrent && !expanded && css.folderActive)}>
+        {expanded ? <IconFolderOpenRegular /> : <IconFolderCloseRegular />}
+      </span>
+      <span className={clsx(css.slot, css.chevron)}>
+        <IconTriangleRightFillRegular className={clsx(css.arrow, expanded && css.arrowOpen)} />
+      </span>
+      <span className={css.projectText}>
+        <span className={css.title}>{title}</span>
+      </span>
+      <span className={css.rowActions}>
+        {canManage && (
+          <button type="button" className={css.iconButton} data-context-menu-trigger
+            aria-label={actionsLabel} aria-haspopup="menu" aria-expanded={menuOpen}
+            onClick={(event) => {
+              event.stopPropagation()
+              const rect = event.currentTarget.getBoundingClientRect()
+              onOpenMenu({ x: rect.left, y: rect.bottom })
+            }}><IconEllipsisOutlineRegular /></button>
+        )}
+      </span>
+    </div>
+  )
+}
+
+type GroupRowItemProps = {
+  groupId: GroupId
+  title: string
+  expanded: boolean
+  containsCurrent: boolean
+  workspaceCount: number
+  onToggle: () => void
+  t: RowTranslate
+} & Pick<WorkspaceBrowserProps, 'openGroupMenu' | 'useContextMenu' | 'useContextMenuTarget' | 'useRemoteAccess'>
+
+/**
+ * Durable Workspace Group header: folder glyph, title, and an actions button for rename and dissolve.
+ * @param props.groupId - Group identity captured by the menu target.
+ * @param props.onToggle - expand or collapse the Group.
+ * @returns the header row element.
+ */
+export function GroupRowItem({
+  groupId, title, expanded, containsCurrent, workspaceCount, onToggle, openGroupMenu, useContextMenu, useContextMenuTarget,
+  useRemoteAccess, t,
+}: GroupRowItemProps) {
+  const canManage = useRemoteAccess('workspace/renameGroup')
+  const menuOpen = useContextMenuTarget(target => target?.kind === 'workspaceGroup' && target.value.groupId === groupId)
+  return (
+    <OrganizationRow
+      title={title} expanded={expanded} containsCurrent={containsCurrent} count={workspaceCount} canManage={canManage}
+      actionsLabel={t('actions.group.aria', { name: title })} onToggle={onToggle}
+      onOpenMenu={(point) => { openGroupMenu(groupId, title, point, 'toggle') }}
+      menuTarget={{ kind: 'workspaceGroup', value: { groupId, displayTitle: title } }} menuOpen={menuOpen}
+      rowKey={`group:${groupId}`} useContextMenu={useContextMenu}
+    />
+  )
+}
+
+type FolderRowItemProps = {
+  workspaceId: WorkspaceId
+  folderId: FolderId
+  title: string
+  expanded: boolean
+  containsCurrent: boolean
+  sessionCount: number
+  onToggle: () => void
+  t: RowTranslate
+} & Pick<WorkspaceBrowserProps, 'openFolderMenu' | 'useContextMenu' | 'useContextMenuTarget' | 'useWorkspaceAccess'>
+
+/**
+ * Workspace-local Session Folder header: folder glyph, title, and an actions button for rename and delete.
+ * @param props.workspaceId - owning Workspace captured by the menu target.
+ * @param props.folderId - Folder identity captured by the menu target.
+ * @param props.onToggle - expand or collapse the Folder.
+ * @returns the header row element.
+ */
+export function FolderRowItem({
+  workspaceId, folderId, title, expanded, containsCurrent, sessionCount, onToggle, openFolderMenu, useContextMenu,
+  useContextMenuTarget, useWorkspaceAccess, t,
+}: FolderRowItemProps) {
+  const canManage = useWorkspaceAccess(workspaceId, 'workspace/renameFolder')
+  const menuOpen = useContextMenuTarget(target => target?.kind === 'workspaceFolder' && target.value.folderId === folderId)
+  return (
+    <OrganizationRow
+      title={title} expanded={expanded} containsCurrent={containsCurrent} count={sessionCount} canManage={canManage}
+      actionsLabel={t('actions.folder.aria', { name: title })} onToggle={onToggle}
+      onOpenMenu={(point) => { openFolderMenu(workspaceId, folderId, title, point, 'toggle') }}
+      menuTarget={{ kind: 'workspaceFolder', value: { workspaceId, folderId, displayTitle: title } }} menuOpen={menuOpen}
+      rowKey={`folder:${folderId}`} useContextMenu={useContextMenu}
     />
   )
 }

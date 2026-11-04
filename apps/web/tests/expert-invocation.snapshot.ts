@@ -183,14 +183,12 @@ describe('Expert invocation through the shipped Web Remote', () => {
 
     const injections = events.filter((event): event is Extract<SessionEvent, { type: 'user/message' }> => (
       event.type === 'user/message'
-        && event.data.source.kind === 'plugin'
-        && event.data.source.plugin === 'expert'
+        && event.data.source.kind === 'expert-invocation'
         && event.data.source.form === 'instructions'
     ))
     expect(injections).toHaveLength(1)
     expect(injections[0]?.data.source).toEqual({
-      kind: 'plugin',
-      plugin: 'expert',
+      kind: 'expert-invocation',
       form: 'instructions',
     })
     const invocationText = eventText(injections[0]!)

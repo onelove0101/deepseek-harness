@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用此包
 
-在已经提供 chat、conversation、settings 和 locale 的 Web 组合中挂载 `@deepseek-ai/dsh-client-chat-process-fold`。折叠默认开启。可在通用设置中用 `chat-process-fold.enabled` 开关关闭它，或把客户端插件的 `enabled` 字段设为 `false`，此时不折叠任何内容，也不发布偏好。
+在已经提供 chat、conversation、settings 和 locale 的 Web 组合中挂载 `@deepseek-ai/dsh-client-chat-process-fold`。折叠默认开启。可在通用设置中用该开关关闭它（它持久化为 `ui-chat-process-fold` 配置条目的 volatile 字段 `enabled`，由本包的 Host 半部声明），或把客户端插件的 `enabled` 字段设为 `false`，此时不折叠任何内容，也不发布偏好。
 
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |

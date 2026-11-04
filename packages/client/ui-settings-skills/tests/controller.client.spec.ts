@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { SettingsScope, SettingsScopeSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { ConfigForm, ConfigFormSnapshot } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { SkillsController, type SkillsRemote, type SkillsSettings } from '../src/client/controller.ts'
 
 const entry = (name: string) => ({ name, description: `${name} desc`, provider: 'filesystem', source: 'user-dsh', enabled: true })
 
 function fakeScope(initial: string[], writable = true) {
-  let snapshot: SettingsScopeSnapshot<SkillsSettings> = {
-    status: 'ready', value: { disabled: initial }, base: undefined, user: undefined, revision: 1, writable, mode: 'host',
+  let snapshot: ConfigFormSnapshot<SkillsSettings> = {
+    status: 'ready', value: { disabled: initial }, base: undefined, user: undefined, revision: 1, writable,
   }
   const listeners = new Set<() => void>()
   const set = vi.fn(async (_field: string, value: unknown) => {
@@ -17,7 +17,7 @@ function fakeScope(initial: string[], writable = true) {
     getSnapshot: () => snapshot,
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener) } },
     set,
-  } as unknown as SettingsScope<SkillsSettings>
+  } as unknown as ConfigForm<SkillsSettings>
   return { scope, set }
 }
 
@@ -134,10 +134,10 @@ describe('SkillsController', () => {
   it('treats a scope without a value as nothing disabled and not writable', async () => {
     const set = vi.fn(async () => {})
     const scope = {
-      getSnapshot: () => ({ status: 'loading', value: undefined, base: undefined, user: undefined, revision: undefined, writable: true, mode: 'host' }),
+      getSnapshot: () => ({ status: 'loading', value: undefined, base: undefined, user: undefined, revision: undefined, writable: true }),
       subscribe: () => () => {},
       set,
-    } as unknown as SettingsScope<SkillsSettings>
+    } as unknown as ConfigForm<SkillsSettings>
     const controller = new SkillsController(fakeRemote(), scope)
     await controller.refresh()
     const state = controller.inject().hooks.skills.getSnapshot()

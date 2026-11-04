@@ -223,6 +223,10 @@ The registry owns only its discovery-cache bound. The local provider owns filesy
 interface Config {
   /** Maximum number of completed cwd/provider catalogs kept in memory. */
   readonly collectCacheMaxEntries?: number
+  /** Skill names the user turned off; read per lookup, so edits apply without a remount. Defaults to none. */
+  readonly disabled?: Volatile<readonly string[]>
+  /** Absolute directories the user added, each holding one `SKILL.md`; read per lookup. Defaults to none. */
+  readonly dirs?: Volatile<readonly string[]>
 }
 ```
 
@@ -240,9 +244,9 @@ The model-facing `skill({ name })` tool validates the kebab-case name, finds the
 
 ## User-managed skills
 
-The Settings **Skills** page manages skills through the `skills` Remote and the `skills` settings namespace (`disabled`, `dirs`), both owned by `SessionSkillCatalog`. `inventory` lists every skill visible without a workspace, including disabled ones, with an `enabled` flag; `add` accepts an absolute directory that holds `SKILL.md`, appends it to `dirs`, and rolls the write back when the provider does not report a valid skill from that directory. A `user-added` `FileSystemSkillProvider` reads `dirs` on every lookup through its `singleSkillDirs` option, where each directory is one skill at the `custom` rank, and the host calls `control.invalidate()` when the list changes.
+The Settings **Skills** page manages skills through the `skills` Remote, owned by `SessionSkillCatalog`, and two volatile `SkillRegistry` Config fields, `disabled` and `dirs`, which the page edits on the `skill` profile entry through `ConfigForm`. `inventory` lists every skill visible without a workspace, including disabled ones, with an `enabled` flag; `add` accepts an absolute directory that holds `SKILL.md`, appends it to `dirs` through `settings.update('skill', …)`, and rolls the write back when the provider does not report a valid skill from that directory. A `user-added` `FileSystemSkillProvider` reads `dirs` from `SkillRegistry.userPreferences()` on every lookup through its `singleSkillDirs` option, where each directory is one skill at the `custom` rank, and the catalog calls `control.invalidate()` when `settings/document-updated` reports a change to the `skill` entry.
 
-`disabled` is applied by `SkillRegistry.setHiddenNames()`. `snapshot()`, `list()`, and `get()` drop hidden names after discovery and before returning, so the model catalog, the `skill` tool, `/name` invocation, and the `/` menu all agree, and a lower-ranked skill of the same name does not replace the hidden one. A caller passes `includeHidden` to see them, as the inventory does. The source is read per lookup, so toggling needs no cache rebuild; the owner calls `notifyHiddenChanged()` to emit `skills/change`.
+`disabled` is applied by `SkillRegistry.setHiddenNames()`, whose source reads `userPreferences().disabled`. `snapshot()`, `list()`, and `get()` drop hidden names after discovery and before returning, so the model catalog, the `skill` tool, `/name` invocation, and the `/` menu all agree, and a lower-ranked skill of the same name does not replace the hidden one. A caller passes `includeHidden` to see them, as the inventory does. The source is read per lookup, so toggling needs no cache rebuild; the owner calls `notifyHiddenChanged()` to emit `skills/change`.
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 

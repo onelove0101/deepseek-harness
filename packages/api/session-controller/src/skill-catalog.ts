@@ -3,10 +3,9 @@
 import { realpath, stat } from 'node:fs/promises'
 import { isAbsolute, join, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
-import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry/types'
 import { SessionQueryError } from '@deepseek-ai/dsh-session-query'
-import type { SettingsScope } from '@deepseek-ai/dsh-settings'
+import type {} from '@deepseek-ai/dsh-settings/types'
 import { isUserInvocable } from '@deepseek-ai/dsh-skill'
 import { FileSystemSkillProvider } from '@deepseek-ai/dsh-skill-filesystem'
 import type {} from '@deepseek-ai/dsh-working-directory'
@@ -21,29 +20,14 @@ import type {
   SkillListValue,
 } from './types.ts'
 
-/** Settings namespace holding the user's disabled skill names and added skill directories. */
-const SKILLS_SETTINGS_NAMESPACE = 'skills'
-
-/** Stored user skill preferences. */
-interface SkillsSettings {
-  disabled: string[]
-  dirs: string[]
-}
-
-const SKILLS_SETTINGS_SCHEMA: z<SkillsSettings> = z.object({
-  disabled: z.array(z.string()).default([]),
-  dirs: z.array(z.string()).default([]),
-})
+/** Profile entry id of the skill registry, whose Config holds the user's disabled skills and added directories. */
+const SKILLS_SETTINGS_NAMESPACE = 'skill'
 
 /** Provider name of skills the user added from a directory. */
 const USER_ADDED_PROVIDER = 'user-added'
 
-/** Live handle over the settings-backed skill preferences. */
-interface UserSkills {
-  readonly scope: SettingsScope<SkillsSettings>
-  /** Rescan the user-added directories. */
-  readonly invalidate: () => void
-}
+/** Rescans the user-added directories. */
+type InvalidateUserDirs = () => void
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -59,31 +43,32 @@ export class SessionSkillCatalog extends TypertRemoteService {
   /** @param ctx - Host context carrying Session reads and optional skill/preset services. */
   constructor(ctx: Context) {
     super(ctx, 'sessionSkillCatalog', { namespace: 'skills' })
-    ctx.inject(['skills', 'settings'], (inner) => {
-      const scope = inner.settings.register(SKILLS_SETTINGS_NAMESPACE, SKILLS_SETTINGS_SCHEMA, {
-        base: { disabled: [], dirs: [] },
-      })
-      let invalidate!: () => void
+    ctx.inject(['skills'], (inner) => {
+      let invalidate!: InvalidateUserDirs
       inner.skills.registerProvider((control) => {
         invalidate = control.invalidate
         return new FileSystemSkillProvider(
           inner,
           control,
           { providerName: USER_ADDED_PROVIDER, includeDefaultRoots: false, watch: false },
-          { singleSkillDirs: () => scope.get().dirs },
+          { singleSkillDirs: () => inner.skills.userPreferences().dirs },
         )
       })
-      inner.effect(() => inner.skills.setHiddenNames(() => new Set(scope.get().disabled)), 'session-controller: hidden skills')
-      inner.effect(() => scope.watch((next, prev) => {
-        if (next.dirs.join('\n') !== prev.dirs.join('\n')) invalidate()
+      inner.effect(
+        () => inner.skills.setHiddenNames(() => new Set(inner.skills.userPreferences().disabled)),
+        'session-controller: hidden skills',
+      )
+      inner.effect(() => inner.on('settings/document-updated', (ns) => {
+        if (ns !== SKILLS_SETTINGS_NAMESPACE) return
+        invalidate()
         inner.skills.notifyHiddenChanged()
       }), 'session-controller: skills settings watcher')
-      this.user = { scope, invalidate: () => { invalidate() } }
-      inner.effect(() => () => { this.user = undefined }, 'session-controller: user skills')
+      this.invalidateUserDirs = invalidate
+      inner.effect(() => () => { this.invalidateUserDirs = undefined }, 'session-controller: user skills')
     })
   }
 
-  private user: UserSkills | undefined
+  private invalidateUserDirs: InvalidateUserDirs | undefined
 
   /**
    * List every skill of the host composition, including skills the user disabled.
@@ -102,12 +87,12 @@ export class SessionSkillCatalog extends TypertRemoteService {
         {},
       )
     }
-    const disabled = new Set(this.user?.scope.get().disabled ?? [])
+    const disabled = new Set(registry.userPreferences().disabled)
     try {
-      const scope = await this.ctx.get('agentPresets')?.standingKeyFor(undefined)
+      await using lease = await this.scopeFor(undefined)
       const skills = await registry.list({
         ...request.cwd === undefined ? {} : { cwd: request.cwd },
-        scope,
+        scope: lease?.key,
         includeHidden: true,
         signal,
       })
@@ -136,8 +121,9 @@ export class SessionSkillCatalog extends TypertRemoteService {
    */
   @Remote
   async add(request: SkillAddRequest, signal: AbortSignal): Promise<SkillInventoryValue> {
-    const user = this.user
-    if (user === undefined) {
+    const settings = this.ctx.get('settings')
+    const skills = this.ctx.get('skills')
+    if (settings === undefined || skills === undefined || this.invalidateUserDirs === undefined) {
       throw new RemoteError('gateway/internal', 'skills cannot be added: no settings provider is mounted', {})
     }
     if (!isAbsolute(request.path)) {
@@ -152,17 +138,17 @@ export class SessionSkillCatalog extends TypertRemoteService {
     } catch {
       throw new RemoteError('gateway/bad-request', `no SKILL.md found in ${dir}`, {})
     }
-    const dirs = user.scope.get().dirs
+    const dirs = skills.userPreferences().dirs
     if (dirs.includes(dir)) {
       throw new RemoteError('gateway/bad-request', `${dir} is already added`, {})
     }
-    await user.scope.update({ dirs: [...dirs, dir] })
-    // The scope watcher runs asynchronously; the response below must already see the new directory.
-    user.invalidate()
+    await settings.update(SKILLS_SETTINGS_NAMESPACE, { dirs: [...dirs, dir] })
+    // The settings listener runs asynchronously; the response below must already see the new directory.
+    this.invalidateUserDirs()
     const inventory = await this.inventory({}, signal)
     if (!inventory.skills.some(skill => skill.path === file)) {
-      await user.scope.update({ dirs })
-      user.invalidate()
+      await settings.update(SKILLS_SETTINGS_NAMESPACE, { dirs })
+      this.invalidateUserDirs()
       throw new RemoteError('gateway/bad-request', `${file} is not a valid skill (name and description are required)`, {})
     }
     return inventory
