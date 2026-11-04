@@ -94,10 +94,6 @@ const workspace = (id: string, sessionIds: string[], title = id): WorkspaceView 
   sessionIds: sessionIds.map(sid), folders: [],
   createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
 })
-const view = (expandedGroups: readonly string[] = [], ungroupedOrder?: readonly string[]) => ({
-  expandedGroups,
-  ...(ungroupedOrder === undefined ? {} : { ungroupedOrder }),
-})
 const noArchive: readonly SessionId[] = []
 const noAttention: SessionStatusSnapshot = new Map()
 const status = (
@@ -115,14 +111,6 @@ const rowState = (options: {
   archivedFilter: options.archivedFilter ?? 'default' as const,
 })
 const noRows = rowState()
-
-describe('owningGroupKey', () => {
-  it('returns the owning Workspace id or the Ungrouped key', () => {
-    const workspaces = [workspace('first', ['owned'])]
-    expect(owningGroupKey(workspaces, sid('owned'))).toBe('first')
-    expect(owningGroupKey(workspaces, sid('loose'))).toBe(UNGROUPED_KEY)
-  })
-})
 
 describe('Session ordering', () => {
   it.each(['workspace', 'ungrouped', 'flat'] as const)('keeps the current New Session before pins in %s', (mode) => {
@@ -366,6 +354,8 @@ describe('deriveGroups', () => {
     expect(plainNode.completed).toBe(false)
     expect(deriveFlat(sessions, visibleSessionIds(sessions, noArchive, 'default'), noRows, statuses)
       .find(node => node.id === done.id)!.completed).toBe(true)
+    expect(deriveFlat(sessions, visibleSessionIds(sessions, noArchive), noAttention)
+      .find(node => node.id === plain.id)!.completed).toBe(false)
     const search = deriveSearchResults(
       sessions, [workspace('first', ['done', 'plain'])], 'done', noArchive, 'default',
       statuses, { items: [], hasMore: false }, 10,

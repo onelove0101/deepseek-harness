@@ -108,13 +108,19 @@ const useTrajectory: SessionSlotProps['useTrajectory'] = () => { throw new Error
 
 function workspace(id = 'w1'): WorkspaceView {
   return {
-    workspaceId: wid(id), path: `/projects/${id}`, title: id, sessionIds: [],
+    workspaceId: wid(id), path: `/projects/${id}`, title: id, sessionIds: [], folders: [],
     createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
   }
 }
 
 const workspaceState = (items: readonly WorkspaceView[]): WorkspaceSnapshot => ({
-  items, archivedSessionIds: [], pinnedSessionIds: [], state: 'idle', phase: 'ready', error: null,
+  items,
+  topLevelWorkspaceIds: items.map(item => item.workspaceId),
+  groups: [],
+  archivedSessionIds: [], pinnedSessionIds: [],
+  state: 'idle',
+  phase: 'ready',
+  error: null,
 })
 
 function sessionSnapshotOf(overrides: Partial<SessionSnapshot> = {}): SessionSnapshot {

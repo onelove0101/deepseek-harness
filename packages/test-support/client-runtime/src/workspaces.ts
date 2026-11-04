@@ -1,7 +1,8 @@
 /** Test-owned workspaces face: the renderer standard-kit observable plus recorded actions. */
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type {
-  IWorkspaces, WorkspaceId, WorkspaceSnapshot, WorkspaceView,
+  IWorkspaces, FolderId, GroupId, WorkspaceFolderView, WorkspaceGroupView, WorkspaceId,
+  WorkspaceSnapshot, WorkspaceView,
 } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -152,6 +153,121 @@ export class TestWorkspaces implements IWorkspaces {
     await this.update((draft) => {
       draft.archivedSessionIds = [...draft.archivedSessionIds, sessionId]
     })
+  }
+
+  /**
+   * Create a Workspace Group (recorded). The default echoes a minimal empty
+   * Group; stub for failure or layout-coupled flows.
+   * @param title - Group title.
+   * @returns the created Group view.
+   */
+  async createGroup(title: string): Promise<WorkspaceGroupView> {
+    this.calls.push({ method: 'createGroup', args: [title] })
+    const stub = this.stubs.get('createGroup')
+    if (stub !== undefined) return await (stub(title) as Promise<WorkspaceGroupView>)
+    return {
+      groupId: `group-${title}` as GroupId, title, workspaceIds: [], createdAt: '', updatedAt: '',
+    } as unknown as WorkspaceGroupView
+  }
+
+  /**
+   * Rename a Workspace Group (recorded). The default echoes a minimal Group.
+   * @param groupId - target Group.
+   * @param title - new title.
+   * @returns the renamed Group view.
+   */
+  async renameGroup(groupId: GroupId, title: string): Promise<WorkspaceGroupView> {
+    this.calls.push({ method: 'renameGroup', args: [groupId, title] })
+    const stub = this.stubs.get('renameGroup')
+    if (stub !== undefined) return await (stub(groupId, title) as Promise<WorkspaceGroupView>)
+    return {
+      groupId, title, workspaceIds: [], createdAt: '', updatedAt: '',
+    } as unknown as WorkspaceGroupView
+  }
+
+  /**
+   * Dissolve a Workspace Group (recorded; default no-op).
+   * @param groupId - Group to dissolve.
+   */
+  async deleteGroup(groupId: GroupId): Promise<void> {
+    this.calls.push({ method: 'deleteGroup', args: [groupId] })
+    await (this.stubs.get('deleteGroup')?.(groupId) as Promise<void> | undefined)
+  }
+
+  /**
+   * File a Workspace in a Group or lift it to the top level (recorded; default no-op).
+   * @param workspaceId - Workspace to file.
+   * @param groupId - target Group; omitted lifts to the top level.
+   */
+  async moveToGroup(workspaceId: WorkspaceId, groupId?: GroupId): Promise<void> {
+    this.calls.push({ method: 'moveToGroup', args: [workspaceId, groupId] })
+    await (this.stubs.get('moveToGroup')?.(workspaceId, groupId) as Promise<void> | undefined)
+  }
+
+  /**
+   * Create a Session Folder (recorded). The default echoes a minimal empty
+   * Folder; stub for failure or list-coupled flows.
+   * @param workspaceId - owning Workspace.
+   * @param title - Folder title.
+   * @returns the created Folder view.
+   */
+  async createFolder(workspaceId: WorkspaceId, title: string): Promise<WorkspaceFolderView> {
+    this.calls.push({ method: 'createFolder', args: [workspaceId, title] })
+    const stub = this.stubs.get('createFolder')
+    if (stub !== undefined) return await (stub(workspaceId, title) as Promise<WorkspaceFolderView>)
+    return {
+      folderId: `folder-${title}` as FolderId, title, sessionIds: [], createdAt: '', updatedAt: '',
+    } as unknown as WorkspaceFolderView
+  }
+
+  /**
+   * Rename a Session Folder (recorded). The default echoes a minimal Workspace.
+   * @param workspaceId - owning Workspace.
+   * @param folderId - target Folder.
+   * @param title - new title.
+   * @returns the owning Workspace view.
+   */
+  async renameFolder(workspaceId: WorkspaceId, folderId: FolderId, title: string): Promise<WorkspaceView> {
+    this.calls.push({ method: 'renameFolder', args: [workspaceId, folderId, title] })
+    const stub = this.stubs.get('renameFolder')
+    if (stub !== undefined) {
+      return await (stub(workspaceId, folderId, title) as Promise<WorkspaceView>)
+    }
+    return { workspaceId, title: '', path: '', sessionIds: [], folders: [] } as unknown as WorkspaceView
+  }
+
+  /**
+   * Remove a Session Folder (recorded). The default echoes a minimal Workspace.
+   * @param workspaceId - owning Workspace.
+   * @param folderId - Folder to remove.
+   * @returns the owning Workspace view.
+   */
+  async deleteFolder(workspaceId: WorkspaceId, folderId: FolderId): Promise<WorkspaceView> {
+    this.calls.push({ method: 'deleteFolder', args: [workspaceId, folderId] })
+    const stub = this.stubs.get('deleteFolder')
+    if (stub !== undefined) return await (stub(workspaceId, folderId) as Promise<WorkspaceView>)
+    return { workspaceId, title: '', path: '', sessionIds: [], folders: [] } as unknown as WorkspaceView
+  }
+
+  /**
+   * File a Session in a Folder or return it to the root (recorded). The
+   * default echoes a minimal Workspace.
+   * @param workspaceId - owning Workspace.
+   * @param sessionId - Session to file.
+   * @param folderId - target Folder; omitted returns the Session to the root.
+   * @returns the owning Workspace view.
+   */
+  async moveSessionToFolder(
+    workspaceId: WorkspaceId,
+    sessionId: SessionId,
+    folderId?: FolderId,
+  ): Promise<WorkspaceView> {
+    this.calls.push({ method: 'moveSessionToFolder', args: [workspaceId, sessionId, folderId] })
+    const stub = this.stubs.get('moveSessionToFolder')
+    if (stub !== undefined) {
+      return await (stub(workspaceId, sessionId, folderId) as Promise<WorkspaceView>)
+    }
+    return { workspaceId, title: '', path: '', sessionIds: [], folders: [] } as unknown as WorkspaceView
   }
 
   /**

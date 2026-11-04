@@ -29,7 +29,7 @@ export interface LeadingMentionEdit {
  */
 export function leadingMentionEdit(draft: string, name: string, known: ReadonlySet<string>): LeadingMentionEdit {
   const match = /^@([^\s@]+) ?/.exec(draft)
-  const [matchedMention, existingName] = match ?? []
-  const end = existingName !== undefined && known.has(existingName) ? matchedMention.length : 0
+  const existingName = match?.[1]
+  const end = match !== null && existingName !== undefined && known.has(existingName) ? match[0].length : 0
   return { text: `@${name} `, end }
 }

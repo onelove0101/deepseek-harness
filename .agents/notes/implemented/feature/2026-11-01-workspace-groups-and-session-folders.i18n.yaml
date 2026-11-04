@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-11-01-workspace-groups-and-session-folders.md
-2026-11-01-workspace-groups-and-session-folders.md: 6cdea61f9d89402e57ad1d3282ec9646acd26ecc
-2026-11-01-workspace-groups-and-session-folders.zh.md: ed78879464911b303fc9b352c33fc2943f7f1749
+2026-11-01-workspace-groups-and-session-folders.md: 7b146f9c828e05fa51d810988ad6ce0d1e83529c
+2026-11-01-workspace-groups-and-session-folders.zh.md: 198828ec341fd56254a4e32472d7bbcd01d0d3f5

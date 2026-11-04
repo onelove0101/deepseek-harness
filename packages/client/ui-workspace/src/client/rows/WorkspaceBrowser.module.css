@@ -468,6 +468,12 @@
   margin-top: 4px;
 }
 
+/* One hierarchy level of indentation: Group children and Folder children each
+   wrap in .nest, so nesting depth composes by 16px per level. */
+.nest {
+  padding-left: 16px;
+}
+
 .listTopDropIndicator,
 .workspaceDropBefore::before,
 .workspaceDropAfter::after {

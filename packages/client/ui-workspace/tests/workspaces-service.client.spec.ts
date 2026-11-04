@@ -58,6 +58,7 @@ function workspace(
     path: `/w/${id}`,
     title: id,
     sessionIds,
+    folders: [],
     createdAt,
     updatedAt: createdAt,
   }
@@ -94,6 +95,8 @@ function workspaceState(
 ): WorkspaceSnapshot {
   return {
     items,
+    topLevelWorkspaceIds: items.map(item => item.workspaceId),
+    groups: [],
     archivedSessionIds,
     pinnedSessionIds: [],
     phase,
@@ -200,6 +203,14 @@ class FakeWorkspaces implements IWorkspaces {
   declare readonly delete: IWorkspaces['delete']
   declare readonly insertBefore: IWorkspaces['insertBefore']
   declare readonly insertSessionBefore: IWorkspaces['insertSessionBefore']
+  declare readonly createGroup: IWorkspaces['createGroup']
+  declare readonly renameGroup: IWorkspaces['renameGroup']
+  declare readonly deleteGroup: IWorkspaces['deleteGroup']
+  declare readonly moveToGroup: IWorkspaces['moveToGroup']
+  declare readonly createFolder: IWorkspaces['createFolder']
+  declare readonly renameFolder: IWorkspaces['renameFolder']
+  declare readonly deleteFolder: IWorkspaces['deleteFolder']
+  declare readonly moveSessionToFolder: IWorkspaces['moveSessionToFolder']
   readonly pinCalls: SessionId[] = []
   readonly unpinCalls: SessionId[] = []
   onPin: IWorkspaces['pinSession'] = async (sessionId) => {

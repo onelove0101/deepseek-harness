@@ -18,7 +18,7 @@ import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { act, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import type { ISession } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { GroupId, WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { SessionSeq, type SessionId } from '@deepseek-ai/dsh-session/types'
 import type { PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { RemoteError, SlotTestRuntime, usePinnedBrowserLanguages } from '@deepseek-ai/dsh-client-test-runtime'
@@ -230,6 +230,47 @@ describe('session rename through the assembled browser', () => {
     expect(alert.textContent).toContain('title write failed')
     expect(view.getByLabelText('会话名称')).toBeTruthy()
     expect(view.getByText('旧标题')).toBeTruthy()
+    await runtime.dispose()
+  })
+
+  it('creates a Group via the view-options dialog: the injected createGroup hop fires and the Group row renders from the layout', async () => {
+    const runtime = await createRuntime()
+    await runtime.workspaces.update((draft) => {
+      draft.items = [{
+        workspaceId: 'w1' as WorkspaceId, title: 'alpha', path: '/w/alpha',
+        sessionIds: [], folders: [],
+        createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+      }] as never
+      draft.topLevelWorkspaceIds = ['w1'] as never
+    })
+    await runtime.root.declare(
+      { 'sidebar.workspaces': { kind: 'single', scope: 'root' } } as never,
+      SidebarFrame as never,
+    )
+    await runtime.mount({ inject: [...inject], apply })
+    const view = runtime.renderRoot()
+
+    // The view-options menu owns the create-Group entry.
+    fireEvent.click(view.getByLabelText('视图选项'))
+    fireEvent.click(await view.findByRole('menuitem', { name: '新建工作区组' }))
+    const input = await view.findByLabelText('工作区组名称') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '  Research  ' } })
+    fireEvent.click(view.getByRole('button', { name: '新建工作区组' }))
+
+    // The injected controller hop received the edge-trimmed draft.
+    await waitFor(() => {
+      expect(runtime.workspaces.calls).toContainEqual({ method: 'createGroup', args: ['Research'] })
+    })
+    await waitFor(() => { expect(view.queryByLabelText('工作区组名称')).toBeNull() })
+
+    // The authoritative layout lands the new Group; the row renders from it.
+    await runtime.workspaces.update((draft) => {
+      draft.groups = [{
+        groupId: 'group-Research' as GroupId, title: 'Research', workspaceIds: [],
+        createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+      }] as never
+    })
+    await view.findByText('Research')
     await runtime.dispose()
   })
 })

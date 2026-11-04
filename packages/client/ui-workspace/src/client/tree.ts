@@ -17,20 +17,6 @@ import { workspaceTitleOf } from '@deepseek-ai/dsh-util-workspace-path'
 /** Group key for Sessions outside every Workspace. */
 export const UNGROUPED_KEY = ''
 
-/**
- * Resolve the Workspace browser group that owns one Session.
- * @param workspaces - authoritative Workspace membership.
- * @param sessionId - Session whose browser group is required.
- * @returns owning Workspace id, or {@link UNGROUPED_KEY} when no Workspace accounts for it.
- */
-export function owningGroupKey(
-  workspaces: readonly WorkspaceView[],
-  sessionId: SessionId,
-): string {
-  return (workspaces.find(workspace => workspace.sessionIds.includes(sessionId))
-    ?.workspaceId as string | undefined) ?? UNGROUPED_KEY
-}
-
 /** Pending interaction kinds with dedicated Workspace-row presentation. */
 export type SessionPendingInteractionStatus = 'approval' | 'plan-review' | 'question'
 type SessionStatuses = SessionStatusSnapshot
@@ -66,25 +52,6 @@ export interface SessionNode {
 /** Session order selected by the Workspace browser. */
 export type SessionOrderBy = 'manual' | 'updated'
 
-/** One workspace group section: header row facts + visible top-level session rows. */
-export interface GroupNode {
-  /** Group key: the workspace id or {@link UNGROUPED_KEY}. */
-  key: string
-  /** Backing Workspace id; absent only for the ungrouped bucket. */
-  workspaceId: WorkspaceId | undefined
-  cwd: string | undefined
-  /** Workspace creation time (epoch ms); absent only for the ungrouped bucket. */
-  createdAt: number | undefined
-  label: string
-  /** Total visible sessions in the group. */
-  sessionCount: number
-  expanded: boolean
-  /** The group contains the selected session (active folder tint; supplied here so the renderer never scans). */
-  containsCurrent: boolean
-  /** Visible session rows (empty while the group is folded). */
-  sessions: readonly SessionNode[]
-}
-
 /** One flat search row combining list metadata with an optional content match. */
 export interface SearchResultNode {
   id: SessionId
@@ -113,15 +80,6 @@ export interface TreeView {
   expandedGroups: readonly string[]
   /** Browser-local order for Sessions without a backing Workspace account. */
   ungroupedOrder?: readonly string[]
-}
-
-interface Group {
-  key: string
-  workspaceId: WorkspaceId | undefined
-  cwd: string | undefined
-  createdAt: number | undefined
-  label: string
-  sessions: SessionSummary[]
 }
 
 /**
@@ -285,18 +243,6 @@ function sectionMembers(
  */
 function sessionTitle(session: SessionSummary): string {
   return session.blank ? '' : (session.title?.trim() ?? '')
-}
-
-/** Build one group without projecting session lineage into presentation. */
-function buildGroup(
-  key: string,
-  workspaceId: WorkspaceId | undefined,
-  cwd: string | undefined,
-  createdAt: number | undefined,
-  label: string,
-  members: readonly SessionSummary[],
-): Group {
-  return { key, workspaceId, cwd, createdAt, label, sessions: [...members] }
 }
 
 /** Apply a stored Ungrouped order and append newly loose Sessions by recency. */
@@ -555,7 +501,7 @@ function visibleMembers(
 ): SessionSummary[] {
   return ids.flatMap((id) => {
     const summary = list.byId[id]
-    return summary === undefined || !sessionVisible(summary, list.current, archived) ? [] : [summary]
+    return summary === undefined || !sessionVisible(summary, mainSessionId(list), archived, 'default') ? [] : [summary]
   })
 }
 
@@ -564,8 +510,8 @@ function workspaceTreeNode(
   list: SessionListState,
   archived: ReadonlySet<SessionId>,
   expanded: ReadonlySet<string>,
-  descendants: ReadonlyMap<SessionId, SubagentDescendantSummary>,
-  pendingInteractions: SessionPendingInteractions,
+  _descendants: ReadonlyMap<SessionId, SubagentDescendantSummary>,
+  _pendingInteractions: SessionPendingInteractions,
 ): WorkspaceTreeNode {
   const foldered = new Set<SessionId>()
   const folders = workspace.folders.map((folder) => {
@@ -582,15 +528,15 @@ function workspaceTreeNode(
       folderId: folder.folderId,
       title: folder.title,
       expanded: isExpanded,
-      containsCurrent: list.current !== undefined && members.some(member => member.id === list.current),
+      containsCurrent: mainSessionId(list) !== undefined && members.some(member => member.id === mainSessionId(list)),
       sessionCount: members.length,
-      sessions: isExpanded ? members.map(member => sessionNode(member, descendants, pendingInteractions)) : [],
+      sessions: isExpanded ? members.map(member => sessionNode(member, list, new Map(), new Set(), archived)) : [],
     }
   })
   const rootMembers = visibleMembers(workspace.sessionIds.filter(id => !foldered.has(id)), list, archived)
   const rootKey = workspaceExpansionKey(workspace.workspaceId)
   const rootExpanded = expanded.has(rootKey)
-  const currentInWorkspace = list.current !== undefined && workspace.sessionIds.includes(list.current)
+  const currentInWorkspace = mainSessionId(list) !== undefined && workspace.sessionIds.includes(mainSessionId(list))
   return {
     kind: 'workspace',
     key: rootKey,
@@ -602,9 +548,9 @@ function workspaceTreeNode(
       kind: 'root',
       key: rootKey,
       expanded: rootExpanded,
-      containsCurrent: rootMembers.some(member => member.id === list.current),
+      containsCurrent: rootMembers.some(member => member.id === mainSessionId(list)),
       sessionCount: rootMembers.length,
-      sessions: rootExpanded ? rootMembers.map(member => sessionNode(member, descendants, pendingInteractions)) : [],
+      sessions: rootExpanded ? rootMembers.map(member => sessionNode(member, list, new Map(), new Set(), archived)) : [],
     },
     folders,
   }
@@ -663,7 +609,7 @@ export function deriveWorkspaceHierarchy(
   const loose = list.ids
     .map(id => list.byId[id])
     .filter((summary): summary is SessionSummary =>
-      summary !== undefined && !accounted.has(summary.id) && sessionVisible(summary, list.current, archived))
+      summary !== undefined && !accounted.has(summary.id) && sessionVisible(summary, mainSessionId(list), archived, 'default'))
   if (loose.length > 0) {
     const key = ungroupedExpansionKey()
     const isExpanded = expanded.has(key)
@@ -672,9 +618,9 @@ export function deriveWorkspaceHierarchy(
       kind: 'ungrouped',
       key,
       expanded: isExpanded,
-      containsCurrent: list.current !== undefined && members.some(member => member.id === list.current),
+      containsCurrent: mainSessionId(list) !== undefined && members.some(member => member.id === mainSessionId(list)),
       sessionCount: members.length,
-      sessions: isExpanded ? members.map(member => sessionNode(member, descendants, pendingInteractions)) : [],
+      sessions: isExpanded ? members.map(member => sessionNode(member, list, new Map(), new Set(), archived)) : [],
     })
   }
   return hierarchy

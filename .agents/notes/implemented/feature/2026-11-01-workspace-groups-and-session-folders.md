@@ -34,7 +34,7 @@ Group transfers continue to use the registry pending-mutation record because the
 
 ## Verification
 
-Workspace tests cover Folder creation, rename, filing, return to root, exclusive membership, deletion, invalid ownership and Folder references, timestamps, permanent Session deletion cleanup, corruption rejection, and legacy raw version-two records. Controller and client tests cover authoritative Group layouts, reconnect state, Group and Folder commands, and stream/unary convergence. Component tests cover localized Group and Folder actions, confirmation flows, and hierarchy rendering.
+Workspace tests cover Folder creation, rename, filing, return to root, exclusive membership, deletion, invalid ownership and Folder references, timestamps, permanent Session deletion cleanup, corruption rejection, and legacy raw version-two records. Controller and client tests cover authoritative Group layouts, reconnect state, Group and Folder commands, and stream/unary convergence. Component tests cover localized Group and Folder actions, confirmation flows, and hierarchy rendering. A real-composition test on `SlotTestRuntime` covers Group creation through the assembled browser: the view-options dialog fires the injected `createGroup` controller hop and the Group row renders from the authoritative layout.
 
 ## Consequences
 
