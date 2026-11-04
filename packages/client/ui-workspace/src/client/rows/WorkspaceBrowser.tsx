@@ -443,6 +443,15 @@ function SessionTree({
     }),
     [list, workspaces, rowState, statuses, expandedGroups, ungroupedSessionIds],
   )
+  // Workspaces whose nested Workspaces run a Session, so a collapsed parent still shows activity.
+  const runningAncestors = useMemo(() => {
+    const keys = new Set<string>()
+    for (const group of groups) {
+      if (!group.running) continue
+      for (let key = parents.get(group.key); key !== undefined; key = parents.get(key)) keys.add(key)
+    }
+    return keys
+  }, [groups, parents])
   useEffect(() => {
     for (let key = revealGroup; key !== undefined; key = parents.get(key)) {
       const expansionKey = expansionKeyOf(key)
@@ -657,6 +666,7 @@ function SessionTree({
             <FolderRowItem
               workspaceId={workspaceView.workspaceId} folderId={folder.folderId} title={folder.title}
               expanded={folderExpanded} containsCurrent={current !== undefined && members.some(node => node.id === current)}
+              running={members.some(node => node.running || node.runningSubagentCount > 0)}
               sessionCount={members.length}
               onToggle={() => { setGroupExpanded(folderKey, !folderExpanded) }}
               openFolderMenu={openFolderMenu} useContextMenu={useContextMenu} useContextMenuTarget={useContextMenuTarget}
@@ -745,6 +755,7 @@ function SessionTree({
           useRemoteAccess={useRemoteAccess}
           useWorkspaceAccess={useWorkspaceAccess}
           containsCurrentDescendant={currentAncestors.has(group.key)}
+          runningDescendant={runningAncestors.has(group.key)}
           home={home}
           t={t}
           onToggle={() => {
@@ -838,6 +849,7 @@ function SessionTree({
             groupId={workspaceGroup.groupId} title={workspaceGroup.title} expanded={expanded}
             containsCurrent={current !== undefined && members.some(member =>
               workspaces.find(workspace => workspace.workspaceId === member.workspaceId)?.sessionIds.includes(current) === true)}
+            running={members.some(member => member.running || runningAncestors.has(member.key))}
             workspaceCount={members.length}
             onToggle={() => { setGroupExpanded(workspaceGroupExpansionKey(workspaceGroup.groupId), !expanded) }}
             openGroupMenu={openGroupMenu} useContextMenu={useContextMenu} useContextMenuTarget={useContextMenuTarget}

@@ -276,6 +276,16 @@ describe('deriveGroups', () => {
     expect(groups[0]!.sessions.map(session => session.id)).toEqual([sid('older'), sid('newer')])
   })
 
+  it('marks a folded group running when a member runs and ignores archived members', () => {
+    const running = { ...summary('running', 10), running: true }
+    const sessions = list(running, summary('idle', 5))
+    const folded = deriveGroups(sessions, [workspace('busy', ['running']), workspace('quiet', ['idle'])], noRows, noAttention, view([]))
+    expect(folded.map(group => group.running)).toEqual([true, false])
+    expect(folded[0]!.sessions).toEqual([])
+    const archived = { ...noRows, archivedSessionIds: [running.id] }
+    expect(deriveGroups(sessions, [workspace('busy', ['running'])], archived, noAttention, view([]))[0]!.running).toBe(false)
+  })
+
   it('projects pending-interaction state into grouped and flat rows', () => {
     const awaiting = { ...summary('awaiting', 10), running: true }
     const sessions = list(awaiting)

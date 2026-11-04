@@ -224,6 +224,8 @@ type ProjectRowItemProps = {
   group: GroupNode
   newShortcut?: ShortcutCatalogEntry | undefined
   containsCurrentDescendant?: boolean
+  /** A nested Workspace under this one has a running Session. */
+  runningDescendant?: boolean
   onToggle: () => void
   onCreate: () => void
   /** Present only for real Workspace rows in the grouped view. */
@@ -248,6 +250,7 @@ interface ProjectRowAccess {
  * their access checks; the ungrouped bucket has no Workspace menu.
  * @param props.group - derived group node.
  * @param props.containsCurrentDescendant - highlight an ancestor even when its subtree is collapsed.
+ * @param props.runningDescendant - animate the folder glyph although only a nested Workspace is running.
  * @param props.onToggle - expand/collapse the group.
  * @param props.onCreate - start a frontend Session inside this Workspace.
  * @param props.drag - optional workspace-row drag wiring.
@@ -268,6 +271,24 @@ function UngroupedProjectRow(props: ProjectRowItemProps) {
   return <ProjectRow {...props} access={{ create, reorder: false }} />
 }
 
+/**
+ * Folder glyph with Session files flying out of it, shown on a header row whose subtree has a running Session.
+ * Motion is CSS-only and stops under `prefers-reduced-motion`, leaving the plain open folder.
+ */
+function RunningFolderIcon() {
+  return (
+    <svg className={css.runningFolder} viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true">
+      <rect className={clsx(css.flyingFile, css.flyingFileLeft)} x="5.5" y="5" width="3.5" height="4.5" rx="0.6" />
+      <rect className={clsx(css.flyingFile, css.flyingFileMid)} x="6.25" y="5" width="3.5" height="4.5" rx="0.6" />
+      <rect className={clsx(css.flyingFile, css.flyingFileRight)} x="7" y="5" width="3.5" height="4.5" rx="0.6" />
+      <path
+        d="M1.6 4.6a1 1 0 0 1 1-1h3.1l1.3 1.5h6.4a1 1 0 0 1 1 1v6.3a1 1 0 0 1-1 1H2.6a1 1 0 0 1-1-1z"
+        stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
 /** A real Workspace's header: every action asks that Workspace's resource. */
 function WorkspaceProjectRow({ workspaceId, ...props }: ProjectRowItemProps & { workspaceId: WorkspaceId }) {
   const { useWorkspaceAccess } = props
@@ -279,7 +300,7 @@ function WorkspaceProjectRow({ workspaceId, ...props }: ProjectRowItemProps & { 
 }
 
 function ProjectRow({
-  group, containsCurrentDescendant = false, onToggle, onCreate, drag: offeredDrag, home, newShortcut, t, access,
+  group, containsCurrentDescendant = false, runningDescendant = false, onToggle, onCreate, drag: offeredDrag, home, newShortcut, t, access,
   openWorkspaceMenu, useContextMenuTarget, useContextMenu,
 }: ProjectRowItemProps & { access: ProjectRowAccess }) {
   const { getTriggerProps } = useContextMenu()
@@ -312,7 +333,9 @@ function ProjectRow({
       onDragEnd={() => { if (dragPreview.clear()) drag?.end() }}
     >
       <span className={clsx(css.slot, css.folder, active && css.folderActive)}>
-        {row.expanded ? <IconFolderOpenRegular /> : <IconFolderCloseRegular />}
+        {group.running || runningDescendant
+          ? <RunningFolderIcon />
+          : row.expanded ? <IconFolderOpenRegular /> : <IconFolderCloseRegular />}
       </span>
       <span className={clsx(css.slot, css.chevron)}>
         <IconTriangleRightFillRegular className={clsx(css.arrow, row.expanded && css.arrowOpen)} />
@@ -371,6 +394,8 @@ function ProjectRow({
 type OrganizationRowProps = {
   /** Glyph that tells this row kind apart from Workspace rows. */
   icon: ReactNode
+  /** Replaces `icon` with the animated folder while a Session below is running. */
+  running: boolean
   title: string
   expanded: boolean
   /** The selected Session lives under this row, so a collapsed row stays highlighted. */
@@ -393,7 +418,7 @@ type OrganizationRowProps = {
 }
 
 function OrganizationRow({
-  icon, title, expanded, containsCurrent, count, canManage, actionsLabel, onToggle, onOpenMenu, menuTarget, menuOpen, rowKey,
+  icon, running, title, expanded, containsCurrent, count, canManage, actionsLabel, onToggle, onOpenMenu, menuTarget, menuOpen, rowKey,
   useContextMenu,
 }: OrganizationRowProps) {
   const { getTriggerProps } = useContextMenu()
@@ -408,7 +433,7 @@ function OrganizationRow({
       {...getTriggerProps(canManage ? menuTarget : undefined)}
     >
       <span className={clsx(css.slot, css.folder, containsCurrent && !expanded && css.folderActive)}>
-        {icon}
+        {running ? <RunningFolderIcon /> : icon}
       </span>
       <span className={clsx(css.slot, css.chevron)}>
         <IconTriangleRightFillRegular className={clsx(css.arrow, expanded && css.arrowOpen)} />
@@ -436,6 +461,7 @@ type GroupRowItemProps = {
   title: string
   expanded: boolean
   containsCurrent: boolean
+  running: boolean
   workspaceCount: number
   onToggle: () => void
   t: RowTranslate
@@ -448,14 +474,14 @@ type GroupRowItemProps = {
  * @returns the header row element.
  */
 export function GroupRowItem({
-  groupId, title, expanded, containsCurrent, workspaceCount, onToggle, openGroupMenu, useContextMenu, useContextMenuTarget,
+  groupId, title, expanded, containsCurrent, running, workspaceCount, onToggle, openGroupMenu, useContextMenu, useContextMenuTarget,
   useRemoteAccess, t,
 }: GroupRowItemProps) {
   const canManage = useRemoteAccess('workspace/renameGroup')
   const menuOpen = useContextMenuTarget(target => target?.kind === 'workspaceGroup' && target.value.groupId === groupId)
   return (
     <OrganizationRow
-      icon={<IconLayersOutlineRegular />}
+      icon={<IconLayersOutlineRegular />} running={running}
       title={title} expanded={expanded} containsCurrent={containsCurrent} count={workspaceCount} canManage={canManage}
       actionsLabel={t('actions.group.aria', { name: title })} onToggle={onToggle}
       onOpenMenu={(point) => { openGroupMenu(groupId, title, point, 'toggle') }}
@@ -471,6 +497,7 @@ type FolderRowItemProps = {
   title: string
   expanded: boolean
   containsCurrent: boolean
+  running: boolean
   sessionCount: number
   onToggle: () => void
   t: RowTranslate
@@ -484,14 +511,14 @@ type FolderRowItemProps = {
  * @returns the header row element.
  */
 export function FolderRowItem({
-  workspaceId, folderId, title, expanded, containsCurrent, sessionCount, onToggle, openFolderMenu, useContextMenu,
+  workspaceId, folderId, title, expanded, containsCurrent, running, sessionCount, onToggle, openFolderMenu, useContextMenu,
   useContextMenuTarget, useWorkspaceAccess, t,
 }: FolderRowItemProps) {
   const canManage = useWorkspaceAccess(workspaceId, 'workspace/renameFolder')
   const menuOpen = useContextMenuTarget(target => target?.kind === 'workspaceFolder' && target.value.folderId === folderId)
   return (
     <OrganizationRow
-      icon={<IconFolderOpenOutlineRegular />}
+      icon={<IconFolderOpenOutlineRegular />} running={running}
       title={title} expanded={expanded} containsCurrent={containsCurrent} count={sessionCount} canManage={canManage}
       actionsLabel={t('actions.folder.aria', { name: title })} onToggle={onToggle}
       onOpenMenu={(point) => { openFolderMenu(workspaceId, folderId, title, point, 'toggle') }}
