@@ -218,18 +218,21 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
   }
 
   /**
-   * File a Workspace in a Group, or lift it to the top level, and install the returned layout.
+   * File a Workspace in a Group, optionally before another Group member, or lift it to the top level, and install the returned layout.
    * @param workspaceId - Workspace to file.
    * @param groupId - target Group; omitted lifts to the top level.
+   * @param beforeWorkspaceId - target Group member anchor; `null` appends a same-Group reorder.
    * @returns generated Remote result.
    */
   async moveToGroup(
     workspaceId: WorkspaceMoveToGroupRequest['workspaceId'],
     groupId?: WorkspaceMoveToGroupRequest['groupId'],
+    beforeWorkspaceId?: WorkspaceMoveToGroupRequest['beforeWorkspaceId'],
   ): Promise<RemoteResult<WorkspaceLayoutValue>> {
     return await this.structural(() => this.remote.moveToGroup({
       workspaceId,
       ...groupId === undefined ? {} : { groupId },
+      ...beforeWorkspaceId === undefined ? {} : { beforeWorkspaceId },
     }))
   }
 

@@ -511,12 +511,31 @@ function SessionTree({
   const groupOf = (workspaceId: string): GroupId | undefined =>
     workspaceGroups.find(candidate => candidate.workspaceIds.some(id => id === workspaceId))?.groupId
   const reportDragFailure = (reason: unknown): void => { console.warn('workspace move rejected:', reason) }
-  /** File a Workspace in a Group, or lift it out and place it among the top-level Workspaces. */
+  /** File a Workspace in a Group, reorder a Group member, or lift it out to the top-level Workspaces. */
   const commitOrganizedDrag = (workspaceId: WorkspaceId, over: NonNullable<WorkspaceDragState['over']>): void => {
     const targetGroup = groupOf(over.id)
     const sourceGroup = groupOf(workspaceId)
     if (targetGroup !== undefined) {
-      if (targetGroup !== sourceGroup) moveToGroup(workspaceId, targetGroup).catch(reportDragFailure)
+      if (targetGroup !== sourceGroup) {
+        moveToGroup(workspaceId, targetGroup).catch(reportDragFailure)
+        return
+      }
+      const target = workspaceGroups.find(candidate => candidate.groupId === targetGroup)
+      if (target === undefined) {
+        return
+      }
+      const members = target.workspaceIds.filter(id => id !== workspaceId)
+      const targetIndex = members.indexOf(over.id)
+      if (targetIndex === -1) {
+        return
+      }
+      const anchor = over.half === 'before' ? over.id : members[targetIndex + 1] ?? null
+      const sourceIndex = target.workspaceIds.indexOf(workspaceId)
+      const anchorIndex = anchor === null ? target.workspaceIds.length : target.workspaceIds.indexOf(anchor)
+      if (anchor === workspaceId || anchorIndex === sourceIndex || anchorIndex === sourceIndex + 1) {
+        return
+      }
+      moveToGroup(workspaceId, targetGroup, anchor).catch(reportDragFailure)
       return
     }
     const siblings = workspaces.filter(workspace => topLevelSet.has(workspace.workspaceId) && workspace.workspaceId !== workspaceId)

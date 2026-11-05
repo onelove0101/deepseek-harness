@@ -147,12 +147,13 @@ export interface IWorkspaces {
    */
   deleteGroup(groupId: GroupId): Promise<void>
   /**
-   * File a Workspace in a Group, or lift it to the top level.
+   * File a Workspace in a Group, optionally before another Group member, or lift it to the top level.
    * @param workspaceId - Workspace to file.
    * @param groupId - target Group; omitted lifts to the top level.
-   * @throws {WorkspaceCommandError} when the Workspace or Group is unknown.
+   * @param beforeWorkspaceId - target Group member anchor; `null` appends a same-Group reorder.
+   * @throws {WorkspaceCommandError} when the Workspace, Group, or anchor is unknown.
    */
-  moveToGroup(workspaceId: WorkspaceId, groupId?: GroupId): Promise<void>
+  moveToGroup(workspaceId: WorkspaceId, groupId?: GroupId, beforeWorkspaceId?: WorkspaceId | null): Promise<void>
   /**
    * Create a Session Folder inside a Workspace.
    * @param workspaceId - owning Workspace.
@@ -277,9 +278,11 @@ export class WorkspaceController extends Service implements IWorkspaces {
     if (!result.ok) throw new WorkspaceCommandError('group delete', result.error)
   }
 
-  async moveToGroup(workspaceId: WorkspaceId, groupId?: GroupId): Promise<void> {
-    const result = await this.model.moveToGroup(workspaceId, groupId)
-    if (!result.ok) throw new WorkspaceCommandError('group move', result.error)
+  async moveToGroup(workspaceId: WorkspaceId, groupId?: GroupId, beforeWorkspaceId?: WorkspaceId | null): Promise<void> {
+    const result = await this.model.moveToGroup(workspaceId, groupId, beforeWorkspaceId)
+    if (!result.ok) {
+      throw new WorkspaceCommandError('group move', result.error)
+    }
   }
 
   async createFolder(workspaceId: WorkspaceId, title: string): Promise<WorkspaceFolderView> {

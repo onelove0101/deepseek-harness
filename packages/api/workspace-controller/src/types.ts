@@ -228,11 +228,13 @@ export interface WorkspaceGroupDeleteRequest {
   readonly groupId: GroupId
 }
 
-/** Workspace filing into a Group, or back to the top level. */
+/** Workspace filing into a Group, including optional Group-member ordering, or back to the top level. */
 export interface WorkspaceMoveToGroupRequest {
   readonly workspaceId: WorkspaceId
   /** Target Group; omitted files the Workspace at the head of the top-level order. */
   readonly groupId?: GroupId
+  /** Target Group member before which to place the Workspace; `null` appends a same-Group reorder. */
+  readonly beforeWorkspaceId?: WorkspaceId | null
 }
 
 /** Group mutation returning the changed Group and the complete resulting layout. */

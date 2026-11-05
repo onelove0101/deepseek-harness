@@ -31,6 +31,7 @@ import type {
   WorkspaceUnarchiveSessionRequest,
   WorkspaceUnpinSessionRequest,
   WorkspaceValue,
+  GroupId,
   WorkspaceId,
   WorkspaceView,
 } from '../src/types.ts'
@@ -414,6 +415,31 @@ describe('ClientWorkspaceModel', () => {
     secondGate.resolve(workspaceError(new RemoteError('workspace/not-found', 'second rejected', { workspaceId: wid('two') })))
     await expect(second).resolves.toMatchObject({ ok: false })
     expect(model.getSnapshot().items.map(item => item.workspaceId)).toEqual(['one', 'two', 'three'])
+  })
+
+  it('sends a Group anchor and applies the returned Group member order', async () => {
+    const remote = new FakeWorkspaceRemote()
+    const model = modelFor(remote)
+    const groupId = 'research' as GroupId
+    baseline(model, [workspace('alpha'), workspace('beta'), workspace('gamma')])
+    remote.onMoveToGroup = () => Promise.resolve(remoteOk({
+      layout: {
+        topLevelWorkspaceIds: [],
+        groups: [{
+          groupId,
+          title: 'Research',
+          workspaceIds: [wid('gamma'), wid('alpha'), wid('beta')],
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        }],
+      },
+    }))
+
+    await expect(model.moveToGroup(wid('gamma'), groupId, wid('alpha'))).resolves.toMatchObject({ ok: true })
+    expect(remote.calls).toContainEqual({
+      method: 'moveToGroup', request: { workspaceId: wid('gamma'), groupId, beforeWorkspaceId: wid('alpha') },
+    })
+    expect(model.getSnapshot().groups[0]?.workspaceIds).toEqual([wid('gamma'), wid('alpha'), wid('beta')])
   })
 
   it('retains removal tombstones across later baselines', () => {

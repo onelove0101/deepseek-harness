@@ -196,13 +196,14 @@ export class TestWorkspaces implements IWorkspaces {
   }
 
   /**
-   * File a Workspace in a Group or lift it to the top level (recorded; default no-op).
+   * File a Workspace in a Group, optionally before another Group member, or lift it to the top level (recorded; default no-op).
    * @param workspaceId - Workspace to file.
    * @param groupId - target Group; omitted lifts to the top level.
+   * @param beforeWorkspaceId - target Group member anchor; `null` appends a same-Group reorder.
    */
-  async moveToGroup(workspaceId: WorkspaceId, groupId?: GroupId): Promise<void> {
-    this.calls.push({ method: 'moveToGroup', args: [workspaceId, groupId] })
-    await (this.stubs.get('moveToGroup')?.(workspaceId, groupId) as Promise<void> | undefined)
+  async moveToGroup(workspaceId: WorkspaceId, groupId?: GroupId, beforeWorkspaceId?: WorkspaceId | null): Promise<void> {
+    this.calls.push({ method: 'moveToGroup', args: [workspaceId, groupId, beforeWorkspaceId] })
+    await (this.stubs.get('moveToGroup')?.(workspaceId, groupId, beforeWorkspaceId) as Promise<void> | undefined)
   }
 
   /**

@@ -586,7 +586,13 @@ describe('WorkspaceRegistry create and lookup', () => {
     await expect(result.registry.delete(workspace.id)).resolves.toBe(false)
     expect(result.registry.get(workspace.id)).toBeUndefined()
     expect(result.registry.list()).toEqual([])
-    expect(storedState(result.pool)).toEqual({ initialized: true, workspaceIds: [], archivedSessionIds: [], pinnedSessionIds: [], groupIds: [] })
+    expect(storedState(result.pool)).toEqual({
+      initialized: true,
+      workspaceIds: [],
+      archivedSessionIds: [],
+      pinnedSessionIds: [],
+      groupIds: [],
+    })
     expect(result.pool.media.get('workspace')!.tables.get('workspaces')!.has(workspace.id)).toBe(false)
     await expect(realpath(dir)).resolves.toBe(dir)
     expect(result.list).toHaveBeenCalledTimes(1)
@@ -1225,7 +1231,13 @@ describe('header-validated membership projection', () => {
     const createRecovery = await harness({ pool: interruptedCreate })
     expect(createRecovery.registry.list()).toEqual([])
     expect(interruptedCreate.media.get('workspace')!.tables.get('workspaces')!.has(createId)).toBe(false)
-    expect(storedState(interruptedCreate)).toEqual({ initialized: true, workspaceIds: [], archivedSessionIds: [], pinnedSessionIds: [], groupIds: [] })
+    expect(storedState(interruptedCreate)).toEqual({
+      initialized: true,
+      workspaceIds: [],
+      archivedSessionIds: [],
+      pinnedSessionIds: [],
+      groupIds: [],
+    })
 
     const filingGroupId = '00000000-0000-4000-8000-0000000000e1'
     const untouchedGroupId = '00000000-0000-4000-8000-0000000000e2'
@@ -1954,6 +1966,33 @@ describe('workspace groups', () => {
     expect(storedState(result.pool).workspaceIds).toEqual([])
   })
 
+  it('reorders Group members durably at named anchors and the Group end', async () => {
+    const alphaDir = await makeDir('group-order-alpha')
+    const betaDir = await makeDir('group-order-beta')
+    const gammaDir = await makeDir('group-order-gamma')
+    const pool = new MemoryMediaPool()
+    const first = await harness({ pool })
+    const alpha = await first.registry.create(alphaDir)
+    const beta = await first.registry.create(betaDir)
+    const gamma = await first.registry.create(gammaDir)
+    const group = await first.registry.createGroup('ordered')
+    await first.registry.moveToGroup(alpha.id, group.id)
+    await first.registry.moveToGroup(beta.id, group.id)
+    await first.registry.moveToGroup(gamma.id, group.id)
+
+    await first.registry.moveToGroup(gamma.id, group.id, beta.id)
+    expect(group.workspaceIds).toEqual([alpha.id, gamma.id, beta.id])
+    expect(storedGroupRecord(pool, group.id).workspaceIds).toEqual([alpha.id, gamma.id, beta.id])
+
+    await first.registry.moveToGroup(alpha.id, group.id, null)
+    expect(group.workspaceIds).toEqual([gamma.id, beta.id, alpha.id])
+    expect(storedGroupRecord(pool, group.id).workspaceIds).toEqual([gamma.id, beta.id, alpha.id])
+
+    await first.fiber.dispose()
+    const second = await harness({ pool })
+    expect(second.registry.getGroup(group.id)!.workspaceIds).toEqual([gamma.id, beta.id, alpha.id])
+  })
+
   it('resolves a same-slot move without writing, and rejects unknown ids', async () => {
     const alphaDir = await makeDir('move-noop-alpha')
     const result = await harness()
@@ -1967,6 +2006,15 @@ describe('workspace groups', () => {
     // the real move below.
     result.pool.failNextWrites = 1
     await result.registry.moveToGroup(alpha.id, group.id)
+    expect(group.workspaceIds).toEqual([alpha.id])
+    expect(result.pool.failNextWrites).toBe(1)
+    result.pool.failNextWrites = 0
+
+    // Explicit self and adjacent anchors also preserve the stored order without
+    // consuming a write.
+    result.pool.failNextWrites = 1
+    await result.registry.moveToGroup(alpha.id, group.id, alpha.id)
+    await result.registry.moveToGroup(alpha.id, group.id, null)
     expect(group.workspaceIds).toEqual([alpha.id])
     expect(result.pool.failNextWrites).toBe(1)
     result.pool.failNextWrites = 0
@@ -1986,6 +2034,8 @@ describe('workspace groups', () => {
       .rejects.toBeInstanceOf(WorkspaceOrderInvalidError)
     await expect(result.registry.moveToGroup(alpha.id, unknownGroup))
       .rejects.toBeInstanceOf(WorkspaceGroupUnknownError)
+    await expect(result.registry.moveToGroup(alpha.id, group.id, unknownWorkspace))
+      .rejects.toBeInstanceOf(WorkspaceOrderInvalidError)
     expect(group.workspaceIds).toEqual([alpha.id])
   })
 

@@ -363,6 +363,31 @@ describe('WorkspaceController follow', () => {
     })
   })
 
+  it('returns an anchored Group member order in the structural result', async () => {
+    const { controller, root } = await harness()
+    const alpha = await controller.create({ path: stageDir(root, 'alpha') })
+    const beta = await controller.create({ path: stageDir(root, 'beta') })
+    const gamma = await controller.create({ path: stageDir(root, 'gamma') })
+    const group = await controller.createGroup({ title: 'Team' })
+    await controller.moveToGroup({ workspaceId: alpha.workspace.workspaceId, groupId: group.group.groupId })
+    await controller.moveToGroup({ workspaceId: beta.workspace.workspaceId, groupId: group.group.groupId })
+    await controller.moveToGroup({ workspaceId: gamma.workspace.workspaceId, groupId: group.group.groupId })
+
+    await expect(controller.moveToGroup({
+      workspaceId: gamma.workspace.workspaceId,
+      groupId: group.group.groupId,
+      beforeWorkspaceId: beta.workspace.workspaceId,
+    })).resolves.toEqual({
+      layout: {
+        topLevelWorkspaceIds: [],
+        groups: [expect.objectContaining({
+          groupId: group.group.groupId,
+          workspaceIds: [alpha.workspace.workspaceId, gamma.workspace.workspaceId, beta.workspace.workspaceId],
+        })],
+      },
+    })
+  })
+
   it('keeps Group members in complete baselines and streams a Folder-only row update', async () => {
     const { controller, ctx, root } = await harness()
     const first = await controller.create({ path: stageDir(root, 'first') })

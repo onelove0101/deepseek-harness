@@ -327,7 +327,9 @@ export function apply(ctx: Context): void {
     createGroup: async (title) => { await workspaces.createGroup(title) },
     renameGroup: async (groupId, title) => { await workspaces.renameGroup(groupId, title) },
     deleteGroup: async (groupId) => { await workspaces.deleteGroup(groupId) },
-    moveToGroup: async (workspaceId, groupId) => { await workspaces.moveToGroup(workspaceId, groupId) },
+    moveToGroup: async (workspaceId, groupId, beforeWorkspaceId) => {
+      await workspaces.moveToGroup(workspaceId, groupId, beforeWorkspaceId)
+    },
     createFolder: async (workspaceId, title) => { await workspaces.createFolder(workspaceId, title) },
     renameFolder: async (workspaceId, folderId, title) => {
       await workspaces.renameFolder(workspaceId, folderId, title)

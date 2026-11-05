@@ -544,31 +544,53 @@ export class WorkspaceRegistry extends Service {
   /**
    * File one workspace under a group — appended to the group's member order —
    * or lift it back to the head of the top-level order when `groupId` is
-   * omitted. Filing never touches the workspace's session accounting. An
-   * unknown workspace rejects with {@link WorkspaceOrderInvalidError}; an
-   * unknown target group rejects with {@link WorkspaceGroupUnknownError}; a
-   * move to the current slot resolves without writing. The transfer crosses
-   * two durable slots, so it runs inside a `group-move` marker window that
-   * startup recovery completes forward.
+   * omitted. A `beforeWorkspaceId` orders the member before that Group peer;
+   * it is rejected unless it belongs to the target Group. Filing never touches
+   * the workspace's session accounting. An unknown workspace or invalid
+   * anchor rejects with {@link WorkspaceOrderInvalidError}; an unknown target
+   * group rejects with {@link WorkspaceGroupUnknownError}. A same-Group
+   * reorder writes only that Group record; cross-slot transfers run inside a
+   * `group-move` marker window that startup recovery completes forward.
    * @param workspaceId - Workspace to file.
    * @param groupId - Target group; omitted files top-level.
+   * @param beforeWorkspaceId - Target Group member before which to place the Workspace; `null` appends a same-Group reorder.
    * @returns resolution after durability.
    */
-  moveToGroup(workspaceId: WorkspaceId, groupId?: GroupId): Promise<void> {
+  moveToGroup(workspaceId: WorkspaceId, groupId?: GroupId, beforeWorkspaceId?: WorkspaceId | null): Promise<void> {
     return this.enqueueOperation(async () => {
       const state = this.requireState()
-      if (!this.entities.has(workspaceId)) throw new WorkspaceOrderInvalidError(workspaceId)
+      if (!this.entities.has(workspaceId)) {
+        throw new WorkspaceOrderInvalidError(workspaceId)
+      }
       const owner = this.groupOwner(workspaceId)
       const target: GroupId | '' = groupId ?? ''
       if (groupId !== undefined && !state.groupIds.includes(groupId)) {
         throw new WorkspaceGroupUnknownError(groupId)
       }
-      if ((owner?.id ?? '') === target) return
+      const targetRecord = groupId === undefined ? state.workspaceIds : this.groupRecord(groupId).workspaceIds
+      if (beforeWorkspaceId !== undefined && beforeWorkspaceId !== null && !targetRecord.includes(beforeWorkspaceId)) {
+        throw new WorkspaceOrderInvalidError(beforeWorkspaceId)
+      }
+      if ((owner?.id ?? '') === target) {
+        if (beforeWorkspaceId === undefined || beforeWorkspaceId === workspaceId) {
+          return
+        }
+        const workspaceIds = targetRecord.filter(id => id !== workspaceId)
+        const at = beforeWorkspaceId === null ? workspaceIds.length : workspaceIds.indexOf(beforeWorkspaceId)
+        await this.fileWorkspace(target, [
+          ...workspaceIds.slice(0, at), workspaceId, ...workspaceIds.slice(at),
+        ])
+        return
+      }
 
       const sourceRecord = owner?.record.workspaceIds ?? state.workspaceIds
-      const targetRecord = groupId === undefined ? state.workspaceIds : this.groupRecord(groupId).workspaceIds
       const from = sourceRecord.filter(id => id !== workspaceId)
-      const to = target === '' ? [workspaceId, ...targetRecord] : [...targetRecord, workspaceId]
+      const at = beforeWorkspaceId === undefined || beforeWorkspaceId === null
+        ? targetRecord.length
+        : targetRecord.indexOf(beforeWorkspaceId)
+      const to = target === ''
+        ? [workspaceId, ...targetRecord]
+        : [...targetRecord.slice(0, at), workspaceId, ...targetRecord.slice(at)]
       await this.setState({
         ...state,
         pendingMutation: {

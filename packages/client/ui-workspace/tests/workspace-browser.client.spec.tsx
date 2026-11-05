@@ -108,6 +108,12 @@ function fireDrag(row: HTMLElement, kind: 'dragOver' | 'drop', clientY: number):
   fireEvent(row, event)
 }
 
+/** Locate the Workspace section, excluding its containing Workspace Group section. */
+function workspaceSection(title: string): HTMLElement {
+  const row = screen.getByRole('treeitem', { name: new RegExp(`^${title}`) })
+  return row.parentElement?.parentElement as HTMLElement
+}
+
 function dragData(): Pick<DataTransfer, 'effectAllowed' | 'dropEffect' | 'setData' | 'setDragImage'> {
   return { effectAllowed: 'uninitialized', dropEffect: 'none', setData: vi.fn(), setDragImage: vi.fn() }
 }
@@ -2771,6 +2777,101 @@ describe('WorkspaceBrowser', () => {
       await waitFor(() => { expect(insertWorkspaceBefore).toHaveBeenCalledWith(wid('gamma'), wid('beta')) })
       expect(moveToGroup).toHaveBeenLastCalledWith(wid('gamma'), undefined)
       expect(b.props.moveToGroup).toBe(moveToGroup)
+    })
+
+    it('reorders a Group member at the exact Workspace drop position', async () => {
+      const moveToGroup = vi.fn(async () => {})
+      mount({
+        useWorkspaces: hook(workspaceState([
+          workspace('alpha', [], 'Alpha'), workspace('beta', [], 'Beta'), workspace('gamma', [], 'Gamma'),
+        ], [], [], {
+          topLevelWorkspaceIds: [], groups: [group('g-research', 'Research', ['alpha', 'beta', 'gamma'])],
+        })),
+        moveToGroup,
+      })
+      fireEvent.click(screen.getByText('Research'))
+      const bounds = () => ({
+        top: 100, bottom: 134, left: 0, right: 200, width: 200, height: 34, x: 0, y: 100, toJSON: () => ({}),
+      })
+      const section = workspaceSection
+
+      const gamma = screen.getByText('Gamma').closest('[role="treeitem"]')!
+      fireEvent.dragStart(gamma, { dataTransfer: dragData() })
+      const betaBefore = section('Beta')
+      betaBefore.getBoundingClientRect = bounds
+      fireDrag(betaBefore, 'dragOver', 105)
+      let betaDrop!: HTMLElement
+      await waitFor(() => {
+        betaDrop = section('Beta')
+        expect(betaDrop.className).toContain('workspaceDropBefore')
+      })
+      betaDrop.getBoundingClientRect = bounds
+      fireDrag(betaDrop, 'drop', 105)
+      fireEvent.dragEnd(gamma)
+      await waitFor(() => { expect(moveToGroup).toHaveBeenCalledWith(wid('gamma'), 'g-research', wid('beta')) })
+
+      moveToGroup.mockClear()
+      const alpha = screen.getByText('Alpha').closest('[role="treeitem"]')!
+      fireEvent.dragStart(alpha, { dataTransfer: dragData() })
+      const gammaAfter = section('Gamma')
+      gammaAfter.getBoundingClientRect = bounds
+      fireDrag(gammaAfter, 'dragOver', 130)
+      let gammaDrop!: HTMLElement
+      await waitFor(() => {
+        gammaDrop = section('Gamma')
+        expect(gammaDrop.className).toContain('workspaceDropAfter')
+      })
+      gammaDrop.getBoundingClientRect = bounds
+      fireDrag(gammaDrop, 'drop', 130)
+      fireEvent.dragEnd(alpha)
+      await waitFor(() => { expect(moveToGroup).toHaveBeenCalledWith(wid('alpha'), 'g-research', null) })
+    })
+
+    it('does not persist a same-Group self-drop or adjacent placement', async () => {
+      const moveToGroup = vi.fn(async () => {})
+      mount({
+        useWorkspaces: hook(workspaceState([
+          workspace('alpha', [], 'Alpha'), workspace('beta', [], 'Beta'), workspace('gamma', [], 'Gamma'),
+        ], [], [], {
+          topLevelWorkspaceIds: [], groups: [group('g-research', 'Research', ['alpha', 'beta', 'gamma'])],
+        })),
+        moveToGroup,
+      })
+      fireEvent.click(screen.getByText('Research'))
+      const bounds = () => ({
+        top: 100, bottom: 134, left: 0, right: 200, width: 200, height: 34, x: 0, y: 100, toJSON: () => ({}),
+      })
+      const section = workspaceSection
+
+      const beta = screen.getByText('Beta').closest('[role="treeitem"]')!
+      fireEvent.dragStart(beta, { dataTransfer: dragData() })
+      const betaBefore = section('Beta')
+      betaBefore.getBoundingClientRect = bounds
+      fireDrag(betaBefore, 'dragOver', 105)
+      let betaDrop!: HTMLElement
+      await waitFor(() => {
+        betaDrop = section('Beta')
+        expect(betaDrop.className).toContain('workspaceDropBefore')
+      })
+      betaDrop.getBoundingClientRect = bounds
+      fireDrag(betaDrop, 'drop', 105)
+      fireEvent.dragEnd(beta)
+      expect(moveToGroup).not.toHaveBeenCalled()
+
+      const betaAgain = screen.getByText('Beta').closest('[role="treeitem"]')!
+      fireEvent.dragStart(betaAgain, { dataTransfer: dragData() })
+      const alphaAfter = section('Alpha')
+      alphaAfter.getBoundingClientRect = bounds
+      fireDrag(alphaAfter, 'dragOver', 130)
+      let alphaDrop!: HTMLElement
+      await waitFor(() => {
+        alphaDrop = section('Alpha')
+        expect(alphaDrop.className).toContain('workspaceDropAfter')
+      })
+      alphaDrop.getBoundingClientRect = bounds
+      fireDrag(alphaDrop, 'drop', 130)
+      fireEvent.dragEnd(betaAgain)
+      expect(moveToGroup).not.toHaveBeenCalled()
     })
 
     it('renames a Group from its dialog', async () => {

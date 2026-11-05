@@ -389,7 +389,7 @@ describe('WorkspaceController', () => {
     await expect(controller.renameGroup('group' as GroupId, 'Renamed Group')).resolves.toMatchObject({
       title: 'Renamed Group',
     })
-    await expect(controller.moveToGroup(wid('one'), 'group' as GroupId)).resolves.toBeUndefined()
+    await expect(controller.moveToGroup(wid('one'), 'group' as GroupId, wid('anchor'))).resolves.toBeUndefined()
     await expect(controller.deleteGroup('group' as GroupId)).resolves.toBeUndefined()
     await expect(controller.createFolder(wid('one'), 'Folder')).resolves.toMatchObject({ title: 'Folder' })
     await expect(controller.renameFolder(wid('one'), 'folder' as FolderId, 'Renamed Folder')).resolves.toMatchObject({
@@ -413,7 +413,9 @@ describe('WorkspaceController', () => {
     expect(mock.log.requests('workspace/unpinSession')).toEqual([{ sessionId: 'session' }])
     expect(mock.log.requests('workspace/createGroup')).toEqual([{ title: 'Group' }])
     expect(mock.log.requests('workspace/renameGroup')).toEqual([{ groupId: 'group', title: 'Renamed Group' }])
-    expect(mock.log.requests('workspace/moveToGroup')).toEqual([{ workspaceId: 'one', groupId: 'group' }])
+    expect(mock.log.requests('workspace/moveToGroup')).toEqual([{
+      workspaceId: 'one', groupId: 'group', beforeWorkspaceId: 'anchor',
+    }])
     expect(mock.log.requests('workspace/deleteGroup')).toEqual([{ groupId: 'group' }])
     expect(mock.log.requests('workspace/createFolder')).toEqual([{ workspaceId: 'one', title: 'Folder' }])
     expect(mock.log.requests('workspace/renameFolder')).toEqual([{

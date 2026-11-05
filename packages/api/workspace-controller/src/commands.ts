@@ -275,8 +275,8 @@ export class WorkspaceCommands {
   }
 
   /**
-   * File one Workspace in a Group, or lift it back to the top level.
-   * @param request - Workspace identity and optional target Group.
+   * File one Workspace in a Group, optionally before another Group member, or lift it back to the top level.
+   * @param request - Workspace identity, optional target Group, and optional member anchor.
    * @returns the complete resulting layout.
    */
   moveToGroup(request: WorkspaceMoveToGroupRequest): Promise<WorkspaceLayoutValue> {
@@ -285,6 +285,9 @@ export class WorkspaceCommands {
         await this.ctx.workspaceRegistry.moveToGroup(
           WorkspaceId(request.workspaceId),
           request.groupId === undefined ? undefined : GroupId(request.groupId),
+          request.beforeWorkspaceId === undefined || request.beforeWorkspaceId === null
+            ? request.beforeWorkspaceId
+            : WorkspaceId(request.beforeWorkspaceId),
         )
       } catch (error) {
         throw mapGroupFailure(error)

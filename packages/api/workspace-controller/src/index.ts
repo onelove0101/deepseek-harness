@@ -194,8 +194,8 @@ export class WorkspaceController extends TypertRemoteService {
   }
 
   /**
-   * File one Workspace in a Group, or lift it to the top level.
-   * @param request - Workspace identity and optional target Group.
+   * File one Workspace in a Group, optionally before another Group member, or lift it to the top level.
+   * @param request - Workspace identity, optional target Group, and optional member anchor.
    * @returns the complete resulting layout.
    */
   @Remote('moveToGroup')

@@ -331,8 +331,8 @@ export type WorkspaceBrowserInjected = {
   renameGroup: (groupId: GroupId, title: string) => Promise<void>
   /** Dissolve one durable Workspace Group without deleting its Workspaces. */
   deleteGroup: (groupId: GroupId) => Promise<void>
-  /** File a Workspace in a Group, or return it to the top-level list. */
-  moveToGroup: (workspaceId: WorkspaceId, groupId?: GroupId) => Promise<void>
+  /** File a Workspace in a Group, optionally before a Group member, or return it to the top-level list. */
+  moveToGroup: (workspaceId: WorkspaceId, groupId?: GroupId, beforeWorkspaceId?: WorkspaceId | null) => Promise<void>
   /** Create one logical Session Folder in a Workspace. */
   createFolder: (workspaceId: WorkspaceId, title: string) => Promise<void>
   /** Rename one logical Session Folder. */
