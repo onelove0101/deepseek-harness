@@ -36,8 +36,6 @@ Status: implemented
 
 ## 测试
 
-`packages/session/session-persistence/tests/contract.ts` 为每个后端固定删除、所有权拒绝、未找到拒绝和 id 复用。`packages/session/session-persistence-jsonl/tests/jsonl.spec.ts` 固定对所有 generation 的删除以及对遗留垃圾目录的清扫。`packages/workspace/workspace/tests/workspace.spec.ts` 固定注册表清理顺序及其失败情形。`packages/api/session-controller/tests/session-delete.host.spec.ts` 固定活动拒绝、错误映射与移除通知，`tests/sessions-service.client.spec.ts` 固定 Client 列表更新。`packages/client/ui-settings-unarchive-sessions/tests/components.client.spec.tsx` 固定确认、进行中、失败与重试路径。
+`packages/session/session-persistence/tests/contract.ts` 为每个后端固定删除、所有权拒绝、未找到拒绝和 id 复用。`packages/session/session-persistence-jsonl/tests/jsonl.spec.ts` 固定对所有 generation 的删除以及对遗留垃圾目录的清扫。`packages/workspace/workspace/tests/workspace.spec.ts` 固定注册表清理顺序及其失败情形。`packages/api/session-controller/tests/session-delete.host.spec.ts` 固定活动拒绝、错误映射与移除通知，`tests/sessions-service.client.spec.ts` 固定 Client 列表更新。
 
 ## 相关
-
-- [Session 取消归档设置页](2026-09-12-session-unarchive-settings-page.zh.md)——本次变更所扩展的恢复入口。

@@ -43,6 +43,3 @@ skill 只能通过发现根目录到达模型和 `/` 菜单，用户唯一的控
 `packages/skill/skill/tests/skill.spec.ts` 固定了 `snapshot`、`list`、`get` 中的隐藏名称、`includeHidden`、变更事件，以及 disposer 只拥有自己的来源。`packages/skill/skill-filesystem/tests/skill-filesystem.spec.ts` 固定了单 skill 目录和失效后的重新扫描。`packages/api/session-controller/tests/session-skill-inventory.host.spec.ts` 用真实的注册表和文件设置提供方运行 Remote：添加、启用状态、禁用、拒绝、回滚与提供方丢失。客户端包测试固定了控制器合并、开关写入、挂载时加载与注册；`packages/client/ui-settings-general/tests` 与 `apps/web/tests/expected/settings-chrome/dialog-en.expected.md` 固定了导航项。
 
 ## 相关
-
-- [Skill invocation policy](2026-07-28-skill-invocation-policy.zh.md) — 隐藏名称过滤所叠加的模型/用户调用控制。
-- [Session unarchive Settings page](2026-09-12-session-unarchive-settings-page.zh.md) — 本页遵循的设置页注册方式。

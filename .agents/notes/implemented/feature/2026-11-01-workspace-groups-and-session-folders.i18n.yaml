@@ -1,6 +1,25 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-11-01-workspace-groups-and-session-folders.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-11-01-workspace-groups-and-session-folders.md
-2026-11-01-workspace-groups-and-session-folders.md: 7b146f9c828e05fa51d810988ad6ce0d1e83529c
-2026-11-01-workspace-groups-and-session-folders.zh.md: 198828ec341fd56254a4e32472d7bbcd01d0d3f5
+/agent-note-workspace-groups-and-session-folders:
+  en: 84d606f1b20fed2a
+  zh: 3142ddd3319dbe15
+/agent-note-workspace-groups-and-session-folders/problem:
+  en: 94f259eff484e652
+  zh: e7af37231f28a611
+/agent-note-workspace-groups-and-session-folders/decision:
+  en: 8dc3e860dc330a4f
+  zh: a5f913d01ee1e303
+/agent-note-workspace-groups-and-session-folders/durability-and-recovery:
+  en: e6661b54f964a6da
+  zh: 4ab1f370c6abf269
+/agent-note-workspace-groups-and-session-folders/alternatives-considered:
+  en: 2239613a379d5a6d
+  zh: aa6e3506884ace03
+/agent-note-workspace-groups-and-session-folders/verification:
+  en: 1991ab958aba5359
+  zh: 9e13d45b98e73c8b
+/agent-note-workspace-groups-and-session-folders/consequences:
+  en: 5ab9a2edf0fec4eb
+  zh: bec4775a68d93073

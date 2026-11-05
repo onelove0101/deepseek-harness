@@ -415,8 +415,8 @@ Host service backing the generated `ctx.remote.workspace` namespace.
 @Remote('deleteGroup') deleteGroup(request: WorkspaceGroupDeleteRequest): Promise<WorkspaceLayoutValue>
 
 /**
- * File one Workspace in a Group, or lift it to the top level.
- * @param request - Workspace identity and optional target Group.
+ * File one Workspace in a Group, optionally before another Group member, or lift it to the top level.
+ * @param request - Workspace identity, optional target Group, and optional member anchor.
  * @returns the complete resulting layout.
  */
 @Remote('moveToGroup') moveToGroup(request: WorkspaceMoveToGroupRequest): Promise<WorkspaceLayoutValue>
@@ -655,17 +655,19 @@ deleteGroup(id: GroupId): Promise<void>
 /**
  * File one workspace under a group — appended to the group's member order —
  * or lift it back to the head of the top-level order when `groupId` is
- * omitted. Filing never touches the workspace's session accounting. An
- * unknown workspace rejects with {@link WorkspaceOrderInvalidError}; an
- * unknown target group rejects with {@link WorkspaceGroupUnknownError}; a
- * move to the current slot resolves without writing. The transfer crosses
- * two durable slots, so it runs inside a `group-move` marker window that
- * startup recovery completes forward.
+ * omitted. A `beforeWorkspaceId` orders the member before that Group peer;
+ * it is rejected unless it belongs to the target Group. Filing never touches
+ * the workspace's session accounting. An unknown workspace or invalid
+ * anchor rejects with {@link WorkspaceOrderInvalidError}; an unknown target
+ * group rejects with {@link WorkspaceGroupUnknownError}. A same-Group
+ * reorder writes only that Group record; cross-slot transfers run inside a
+ * `group-move` marker window that startup recovery completes forward.
  * @param workspaceId - Workspace to file.
  * @param groupId - Target group; omitted files top-level.
+ * @param beforeWorkspaceId - Target Group member before which to place the Workspace; `null` appends a same-Group reorder.
  * @returns resolution after durability.
  */
-moveToGroup(workspaceId: WorkspaceId, groupId?: GroupId): Promise<void>
+moveToGroup(workspaceId: WorkspaceId, groupId?: GroupId, beforeWorkspaceId?: WorkspaceId | null): Promise<void>
 
 /**
  * Archive one session durably. The session must exist (live or in session
@@ -699,20 +701,6 @@ archiveSession(sessionId: SessionId, options: ArchiveSessionOptions = {}): Promi
 unarchiveSession(sessionId: SessionId): Promise<void>
 
 /**
- * Permanently delete one session: erase its stored log through
- * `sessionPersistence.delete`, then drop every registry reference to it
- * (archive set, pin set, workspace membership, header and path caches). Persistence
- * is erased first, so a failure there leaves the session and its registry
- * entries untouched; a failure while scrubbing leaves only orphan ids that
- * the membership filter already ignores. A session persistence no longer
- * holds still has its registry references scrubbed.
- * @param sessionId - The session to delete.
- * @returns resolution after the registry no longer references the session.
- * @throws {SessionAlreadyOwnedError} when a live handle holds the session.
- */
-deleteSession(sessionId: SessionId): Promise<void>
-
-/**
  * Pin one session durably, prepending it to the registry-global pin set.
  * The session must exist (live or in session persistence) and must not be
  * archived. An already pinned id resolves without writing or reordering.
@@ -730,6 +718,20 @@ pinSession(sessionId: SessionId): Promise<void>
  * @returns resolution after durability.
  */
 unpinSession(sessionId: SessionId): Promise<void>
+
+/**
+ * Permanently delete one session: erase its stored log through
+ * `sessionPersistence.delete`, then drop every registry reference to it
+ * (archive set, pin set, workspace membership, header and path caches). Persistence
+ * is erased first, so a failure there leaves the session and its registry
+ * entries untouched; a failure while scrubbing leaves only orphan ids that
+ * the membership filter already ignores. A session persistence no longer
+ * holds still has its registry references scrubbed.
+ * @param sessionId - The session to delete.
+ * @returns resolution after the registry no longer references the session.
+ * @throws {SessionAlreadyOwnedError} when a live handle holds the session.
+ */
+deleteSession(sessionId: SessionId): Promise<void>
 
 /**
  * Resolve by canonical directory path without creating or mutating a

@@ -36,8 +36,6 @@ Deletion is permanent and has no undo. The abstract `delete` method is a public 
 
 ## Testing
 
-`packages/session/session-persistence/tests/contract.ts` pins deletion, the ownership refusal, the not-found rejection, and id reuse for every backend. `packages/session/session-persistence-jsonl/tests/jsonl.spec.ts` pins removal of every generation and the sweep of a leftover trash directory. `packages/workspace/workspace/tests/workspace.spec.ts` pins the registry scrub order and its failure cases. `packages/api/session-controller/tests/session-delete.host.spec.ts` pins the live refusal, error mapping, and removal notification, and `tests/sessions-service.client.spec.ts` pins the Client list update. `packages/client/ui-settings-unarchive-sessions/tests/components.client.spec.tsx` pins the confirmation, pending, failure, and retry paths.
+`packages/session/session-persistence/tests/contract.ts` pins deletion, the ownership refusal, the not-found rejection, and id reuse for every backend. `packages/session/session-persistence-jsonl/tests/jsonl.spec.ts` pins removal of every generation and the sweep of a leftover trash directory. `packages/workspace/workspace/tests/workspace.spec.ts` pins the registry scrub order and its failure cases. `packages/api/session-controller/tests/session-delete.host.spec.ts` pins the live refusal, error mapping, and removal notification, and `tests/sessions-service.client.spec.ts` pins the Client list update.
 
 ## Related
-
-- [Session unarchive Settings page](2026-09-12-session-unarchive-settings-page.md) — the restore surface this change extends.

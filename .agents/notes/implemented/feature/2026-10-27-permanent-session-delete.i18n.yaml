@@ -1,6 +1,25 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-10-27-permanent-session-delete.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-27-permanent-session-delete.md
-2026-10-27-permanent-session-delete.md: bab57f4c3b0a24da4e7b9e22905393c9fcf7841d
-2026-10-27-permanent-session-delete.zh.md: ce010c942caa4e1e00bb10ab88add1e8438838bf
+/agent-note-permanent-session-delete-from-the-archived-sessions-page:
+  en: e5df5aea0c5f51a1
+  zh: 80a3910e6d391264
+/agent-note-permanent-session-delete-from-the-archived-sessions-page/problem:
+  en: ec6cf1bb0de990d5
+  zh: a942714d5f64f80e
+/agent-note-permanent-session-delete-from-the-archived-sessions-page/decision:
+  en: a265ae34bb411f10
+  zh: a98c760e7f82509f
+/agent-note-permanent-session-delete-from-the-archived-sessions-page/alternatives-considered:
+  en: 4e6f197a3fca427e
+  zh: 1c53944340057aa9
+/agent-note-permanent-session-delete-from-the-archived-sessions-page/consequences:
+  en: d64660ea55ec2a85
+  zh: 0c7a8dcc68f400d1
+/agent-note-permanent-session-delete-from-the-archived-sessions-page/testing:
+  en: 98b9a10cf33f8f35
+  zh: 30a7f2d4c0864057
+/agent-note-permanent-session-delete-from-the-archived-sessions-page/related:
+  en: 630a5d69a7093105
+  zh: a659ef963a1e7390

@@ -1,6 +1,25 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-10-28-skills-settings-page.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-28-skills-settings-page.md
-2026-10-28-skills-settings-page.md: 6225877070e3bc7258128af9ab345975399d9bb4
-2026-10-28-skills-settings-page.zh.md: 87cd6877d78eb5c6207d0070b3b62c947c836e1c
+/agent-note-skills-settings-page:
+  en: 232fc3ac3383c9dd
+  zh: 0757f7ddfe61370e
+/agent-note-skills-settings-page/problem:
+  en: bde9b957293cb44e
+  zh: d60665f65013e589
+/agent-note-skills-settings-page/decision:
+  en: 3067bf844523f43c
+  zh: d37d55d2df2cd066
+/agent-note-skills-settings-page/alternatives-considered:
+  en: 346d823942f12f4d
+  zh: 0bdf4fd0ebe002c9
+/agent-note-skills-settings-page/consequences:
+  en: 1c0a566d6c9c9956
+  zh: 369e78f3baf95036
+/agent-note-skills-settings-page/testing:
+  en: d10d95cee277a508
+  zh: e7cfe83666d60f45
+/agent-note-skills-settings-page/related:
+  en: 630a5d69a7093105
+  zh: a659ef963a1e7390

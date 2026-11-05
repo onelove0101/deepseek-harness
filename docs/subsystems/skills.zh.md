@@ -404,6 +404,12 @@ registerProvider(create: (control: SkillProviderControl) => SkillProvider): () =
  */
 setHiddenNames(source: () => ReadonlySet<string>): () => void
 
+/**
+ * Read the user's skill preferences from the live Config.
+ * @returns the disabled skill names and the user-added skill directories.
+ */
+userPreferences(): { readonly disabled: readonly string[]; readonly dirs: readonly string[] }
+
 /** Emit `skills/change` after the hidden-name source changed its answer. */
 notifyHiddenChanged(): void
 

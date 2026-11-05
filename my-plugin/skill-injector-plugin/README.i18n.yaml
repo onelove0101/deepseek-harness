@@ -1,6 +1,28 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write my-plugin/skill-injector-plugin/README.md
-README.md: 9b9d171c843341d07bb85fd220cebbbcd3e7c8bf
-README.zh.md: 5f52c8020f6eb1f0e611c466e035f977b38dfb10
+/skill-injector-plugin:
+  en: 26229fb71d66fc62
+  zh: 3173492a2dd08529
+/skill-injector-plugin/what-does-it-do:
+  en: 2454c930ac964bd6
+  zh: bbef3d4687dceb3d
+/skill-injector-plugin/how-to-use:
+  en: 074ad951502ebc0d
+  zh: 934f5a01c9b22ee2
+/skill-injector-plugin/how-to-use/step-1-install-skip-if-already-installed:
+  en: 821df6e8aa6df20e
+  zh: 932a7b2c3912c286
+/skill-injector-plugin/how-to-use/step-2-configure-the-skill-paths:
+  en: 20e15c3694d7f07d
+  zh: eca028bbf46debf0
+/skill-injector-plugin/how-to-use/step-3-start-using-it:
+  en: acbed0438f1ad0e9
+  zh: 93747ea1d055838f
+/skill-injector-plugin/configuration-optional:
+  en: 2515dd213fbcf11b
+  zh: 7ebb52bd7cea2653
+/skill-injector-plugin/where-the-files-are:
+  en: b38232ebffb5f9bc
+  zh: f43f94799cb9645d

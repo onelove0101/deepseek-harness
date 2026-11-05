@@ -1119,6 +1119,67 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'experts',
+    summary: 'Host owner of the `experts` Remote namespace and of Expert invocation.',
+    description: 'Host owner of the `experts` Remote namespace and of Expert invocation.',
+    methods: [
+      {
+        signature: '@Remote list(_request: ExpertListRequest, signal: AbortSignal): Promise<ExpertLibraryValue>',
+        description: 'Read the whole library.',
+        parameters: [{ name: '_request', description: 'no fields.' }, { name: 'signal', description: 'caller lifetime carried by the Remote transport.' }],
+        returns: 'Experts, documents without text, knowledge bases, and the bounds in force.',
+      },
+      {
+        signature: '@Remote ranked(_request: ExpertRankedRequest, signal: AbortSignal): Promise<ExpertRankedValue>',
+        description: 'Read the enabled Experts in usage order for the composer menu.',
+        parameters: [{ name: '_request', description: 'no fields.' }, { name: 'signal', description: 'caller lifetime carried by the Remote transport.' }],
+        returns: 'enabled Experts, most used first, then most recently used, then by name.',
+      },
+      {
+        signature: '@Remote saveExpert(request: ExpertSaveRequest, signal: AbortSignal): Promise<ExpertLibraryValue>',
+        description: 'Create an Expert, or edit the Expert named by `request.id`.',
+        parameters: [{ name: 'request', description: 'desired Expert fields.' }, { name: 'signal', description: 'caller lifetime carried by the Remote transport.' }],
+        returns: 'the library after the write.',
+        throws: ['RemoteError `expert/invalid`, `expert/not-found`, `expert/name-taken`, or `expert/limit-exceeded`.'],
+      },
+      {
+        signature: '@Remote deleteExpert(request: ExpertDeleteRequest, signal: AbortSignal): Promise<ExpertLibraryValue>',
+        description: 'Delete one Expert.',
+        parameters: [{ name: 'request', description: 'Expert to delete.' }, { name: 'signal', description: 'caller lifetime carried by the Remote transport.' }],
+        returns: 'the library after the write.',
+        throws: ['RemoteError `expert/not-found` when the Expert does not exist.'],
+      },
+      {
+        signature: '@Remote createDocument(request: ExpertDocumentCreateRequest, signal: AbortSignal): Promise<ExpertLibraryValue>',
+        description: 'Store one text document in the private library.',
+        parameters: [{ name: 'request', description: 'title and text; the text arrives in the request, never as a path or URL.' }, { name: 'signal', description: 'caller lifetime carried by the Remote transport.' }],
+        returns: 'the library after the write.',
+        throws: ['RemoteError `expert/invalid` or `expert/limit-exceeded`.'],
+      },
+      {
+        signature: '@Remote deleteDocument(request: ExpertDocumentDeleteRequest, signal: AbortSignal): Promise<ExpertLibraryValue>',
+        description: 'Delete one document and drop it from every selection.',
+        parameters: [{ name: 'request', description: 'document to delete.' }, { name: 'signal', description: 'caller lifetime carried by the Remote transport.' }],
+        returns: 'the library after the write.',
+        throws: ['RemoteError `expert/not-found` when the document does not exist.'],
+      },
+      {
+        signature: '@Remote saveKnowledgeBase(request: ExpertKnowledgeBaseSaveRequest, signal: AbortSignal): Promise<ExpertLibraryValue>',
+        description: 'Create a knowledge base, or edit the one named by `request.id`.',
+        parameters: [{ name: 'request', description: 'desired name and member documents.' }, { name: 'signal', description: 'caller lifetime carried by the Remote transport.' }],
+        returns: 'the library after the write.',
+        throws: ['RemoteError `expert/invalid`, `expert/not-found`, or `expert/limit-exceeded`.'],
+      },
+      {
+        signature: '@Remote deleteKnowledgeBase(request: ExpertKnowledgeBaseDeleteRequest, signal: AbortSignal): Promise<ExpertLibraryValue>',
+        description: 'Delete one knowledge base and drop it from every Expert that selects it.',
+        parameters: [{ name: 'request', description: 'knowledge base to delete.' }, { name: 'signal', description: 'caller lifetime carried by the Remote transport.' }],
+        returns: 'the library after the write.',
+        throws: ['RemoteError `expert/not-found` when the knowledge base does not exist.'],
+      },
+    ],
+  },
+  {
     key: 'fileReferences',
     summary: 'Host capability for cancellable file-reference discovery.',
     description: 'Host capability for cancellable file-reference discovery.',
@@ -2756,6 +2817,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the accepted title and durable event sequence.',
       },
       {
+        signature: '@Remote(\'deleteSession\') deleteSession(request: SessionDeleteRequest): Promise<SessionDeleteValue>',
+        description: 'Permanently delete one inactive Session and its stored log.',
+        parameters: [{ name: 'request', description: 'Session identity.' }],
+        returns: 'acknowledgement after the Session is erased.',
+      },
+      {
         signature: '@Remote(\'fork\') async fork(request: SessionForkRequest): Promise<SessionForkValue>',
         description: 'Fork one cold-readable exact event prefix into a new Session. An omitted boundary selects the latest completed-turn prefix; an open cut receives synthetic fork closers.',
         parameters: [{ name: 'request', description: 'source Session, optional exact inclusive event boundary, and migration preflight choice.' }],
@@ -2923,6 +2990,13 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'options', description: 'optional cancellation.' }],
         returns: 'one snapshot per stored session.',
       },
+      {
+        signature: 'abstract delete(id: SessionId, options?: SessionPersistenceDeleteOptions): Promise<void>',
+        description: 'Permanently erase one stored session: its header, every event, and every historical generation. This is an explicit user action, distinct from format migration, which never removes a committed generation.\n\nRejects while any write handle exists for the id (in this process, in another process, or a created-but-unmaterialized session). Read handles do not block deletion; a read started afterwards observes the session as absent. Once this resolves, `stat` returns `undefined` and `list` omits the session.',
+        parameters: [{ name: 'id', description: 'the stored session to erase.' }, { name: 'options', description: 'optional cancellation.' }],
+        returns: 'resolution once the session is no longer observable.',
+        throws: ['{SessionPersistenceNotFoundError} when the session does not exist.', '{SessionAlreadyOwnedError} when a write handle holds the session.'],
+      },
     ],
   },
   {
@@ -2959,6 +3033,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Cold-read one session\'s projections from its complete log. Each unit is seeded from the identity-checked cached rows — the registry skips `apply` for the already-folded prefix (events at or below the row\'s `seq`) — and the refreshed checkpoint is written back (fail-soft, fire-and-forget), so the first cold read creates the cache row and later ones seed from it. The caller supplies the complete log in seq order: this service never consults the persistence layer.',
         parameters: [{ name: 'meta', description: 'the stored session header (identity witness).' }, { name: 'inheritedEventCount', description: 'exact inherited prefix length for projection initialization and identity.' }, { name: 'events', description: 'the session\'s complete log, in seq order.' }],
         returns: 'the projection cut at the log end.',
+      },
+      {
+        signature: 'async forget(id: SessionId): Promise<void>',
+        description: 'Drop the stored record of a permanently deleted session so it does not outlive its log. Absent ids resolve without writing.',
+        parameters: [{ name: 'id', description: 'the deleted session.' }],
+        returns: 'resolution once the record is removed from durable storage.',
       },
     ],
   },
@@ -3233,6 +3313,20 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'Host service backing `ctx.remote.skills` without activating a cold Agent.',
     methods: [
       {
+        signature: '@Remote async inventory(request: SkillInventoryRequest, signal: AbortSignal): Promise<SkillInventoryValue>',
+        description: 'List every skill of the host composition, including skills the user disabled.',
+        parameters: [{ name: 'request', description: 'optional workspace directory whose project skill roots are included.' }, { name: 'signal', description: 'caller lifetime carried by the Remote transport.' }],
+        returns: 'skills sorted by name with their enabled state.',
+        throws: ['RemoteError when no skill registry is mounted or discovery fails.'],
+      },
+      {
+        signature: '@Remote async add(request: SkillAddRequest, signal: AbortSignal): Promise<SkillInventoryValue>',
+        description: 'Register a directory that contains `SKILL.md` as a user-added skill.',
+        parameters: [{ name: 'request', description: 'absolute directory path.' }, { name: 'signal', description: 'caller lifetime carried by the Remote transport.' }],
+        returns: 'the inventory after the directory was added.',
+        throws: ['RemoteError when settings are unavailable, the path is not an absolute directory with a valid `SKILL.md`, or the directory is already registered.'],
+      },
+      {
         signature: '@Remote async list(request: SkillListRequest, signal: AbortSignal): Promise<SkillListValue>',
         description: 'List the user-invocable skills visible to one Session composition.',
         parameters: [{ name: 'request', description: 'Session identity whose cwd and preset select the catalog view.' }, { name: 'signal', description: 'caller lifetime carried by the Remote transport; admitted catalog reads retain their existing completion semantics.' }],
@@ -3439,6 +3533,23 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Register a borrowed same-process provider synchronously during plugin apply, into the calling context\'s layer: a scoped context (an agent preset\'s standing mount) registers for that scope alone, an unscoped context registers globally. Duplicate names within one layer and reserved names throw; remote initialization belongs in `list()`. Fiber disposal unregisters the provider and invalidates catalog caches.',
         parameters: [{ name: 'create', description: 'synchronous factory receiving this registration\'s lifecycle and invalidation control.' }],
         returns: 'the exact Cordis effect disposer that unregisters this provider; composite effects may yield it directly to preserve teardown ordering.',
+      },
+      {
+        signature: 'setHiddenNames(source: () => ReadonlySet<string>): () => void',
+        description: 'Hide skills by name from `snapshot()`, `list()`, and `get()` unless the caller passes `includeHidden`. The hidden name removes the winning entry itself, so a lower-ranked same-name skill does not resurface. The source is read per lookup; call SkillRegistry.notifyHiddenChanged after its answer changes.',
+        parameters: [{ name: 'source', description: 'returns the current hidden names.' }],
+        returns: 'a disposer that restores the previous (empty) source.',
+      },
+      {
+        signature: 'userPreferences(): { readonly disabled: readonly string[]; readonly dirs: readonly string[] }',
+        description: 'Read the user\'s skill preferences from the live Config.',
+        parameters: [],
+        returns: 'the disabled skill names and the user-added skill directories.',
+      },
+      {
+        signature: 'notifyHiddenChanged(): void',
+        description: 'Emit `skills/change` after the hidden-name source changed its answer.',
+        parameters: [],
       },
       {
         signature: 'register(skill: SkillRegistration): () => void',
@@ -4546,6 +4657,54 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the updated Workspace projection.',
       },
       {
+        signature: '@Remote(\'createGroup\') createGroup(request: WorkspaceGroupCreateRequest): Promise<WorkspaceGroupValue>',
+        description: 'Create one Workspace Group with a unique non-blank title.',
+        parameters: [{ name: 'request', description: 'proposed title.' }],
+        returns: 'the new Group and the complete resulting layout.',
+      },
+      {
+        signature: '@Remote(\'renameGroup\') renameGroup(request: WorkspaceGroupRenameRequest): Promise<WorkspaceGroupValue>',
+        description: 'Rename one Workspace Group to a unique non-blank title.',
+        parameters: [{ name: 'request', description: 'Group identity and proposed title.' }],
+        returns: 'the updated Group and the complete resulting layout.',
+      },
+      {
+        signature: '@Remote(\'deleteGroup\') deleteGroup(request: WorkspaceGroupDeleteRequest): Promise<WorkspaceLayoutValue>',
+        description: 'Dissolve one Group while retaining its Workspaces at the top level.',
+        parameters: [{ name: 'request', description: 'Group identity to remove.' }],
+        returns: 'the complete resulting layout.',
+      },
+      {
+        signature: '@Remote(\'moveToGroup\') moveToGroup(request: WorkspaceMoveToGroupRequest): Promise<WorkspaceLayoutValue>',
+        description: 'File one Workspace in a Group, optionally before another Group member, or lift it to the top level.',
+        parameters: [{ name: 'request', description: 'Workspace identity, optional target Group, and optional member anchor.' }],
+        returns: 'the complete resulting layout.',
+      },
+      {
+        signature: '@Remote(\'createFolder\') createFolder(request: WorkspaceFolderCreateRequest): Promise<WorkspaceFolderValue>',
+        description: 'Create one Session Folder inside a Workspace.',
+        parameters: [{ name: 'request', description: 'Workspace identity and proposed title.' }],
+        returns: 'the new Folder and its owning Workspace.',
+      },
+      {
+        signature: '@Remote(\'renameFolder\') renameFolder(request: WorkspaceFolderRenameRequest): Promise<WorkspaceValue>',
+        description: 'Rename one Session Folder.',
+        parameters: [{ name: 'request', description: 'Workspace, Folder, and proposed title.' }],
+        returns: 'the updated Workspace projection.',
+      },
+      {
+        signature: '@Remote(\'deleteFolder\') deleteFolder(request: WorkspaceFolderDeleteRequest): Promise<WorkspaceValue>',
+        description: 'Remove one Session Folder while retaining its Sessions in the Workspace.',
+        parameters: [{ name: 'request', description: 'Workspace and Folder identities.' }],
+        returns: 'the updated Workspace projection.',
+      },
+      {
+        signature: '@Remote(\'moveSessionToFolder\') moveSessionToFolder(request: WorkspaceMoveSessionToFolderRequest): Promise<WorkspaceValue>',
+        description: 'File one accounted Session in a Folder, or return it to the Workspace root.',
+        parameters: [{ name: 'request', description: 'Workspace, Session, and optional target Folder.' }],
+        returns: 'the updated Workspace projection.',
+      },
+      {
         signature: '@Remote(\'archiveSession\') archiveSession(request: WorkspaceArchiveSessionRequest): Promise<WorkspaceArchiveValue>',
         description: 'Hide one known Session from Workspace grouping surfaces.',
         parameters: [{ name: 'request', description: 'Session identity to archive.' }],
@@ -4657,6 +4816,36 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the complete committed workspace order.',
       },
       {
+        signature: 'async createGroup(title: string): Promise<WorkspaceGroup>',
+        description: 'Create a workspace group folder. The new group is prepended to the durable group display order. Group titles are not unique at this layer; the Remote command surface enforces the title-uniqueness policy.',
+        parameters: [{ name: 'title', description: 'Display title.' }],
+        returns: 'the newly durable group.',
+      },
+      {
+        signature: 'getGroup(id: GroupId): WorkspaceGroup | undefined',
+        description: 'Look up a group by id.',
+        parameters: [{ name: 'id', description: 'Group id.' }],
+        returns: 'the group, or `undefined` when unknown.',
+      },
+      {
+        signature: 'listGroups(): WorkspaceGroup[]',
+        description: 'Synchronous group projection in durable group display order.',
+        parameters: [],
+        returns: 'a fresh ordered array of group views.',
+      },
+      {
+        signature: 'deleteGroup(id: GroupId): Promise<void>',
+        description: 'Delete one group while retaining every filed workspace registration: the members are filed back to the top level at the head of the workspace order (preserving their in-group order) before the group record drops, so no workspace is ever lost with its folder. Unknown ids reject.',
+        parameters: [{ name: 'id', description: 'Group to remove.' }],
+        returns: 'resolution after durability.',
+      },
+      {
+        signature: 'moveToGroup(workspaceId: WorkspaceId, groupId?: GroupId, beforeWorkspaceId?: WorkspaceId | null): Promise<void>',
+        description: 'File one workspace under a group — appended to the group\'s member order — or lift it back to the head of the top-level order when `groupId` is omitted. A `beforeWorkspaceId` orders the member before that Group peer; it is rejected unless it belongs to the target Group. Filing never touches the workspace\'s session accounting. An unknown workspace or invalid anchor rejects with WorkspaceOrderInvalidError; an unknown target group rejects with WorkspaceGroupUnknownError. A same-Group reorder writes only that Group record; cross-slot transfers run inside a `group-move` marker window that startup recovery completes forward.',
+        parameters: [{ name: 'workspaceId', description: 'Workspace to file.' }, { name: 'groupId', description: 'Target group; omitted files top-level.' }, { name: 'beforeWorkspaceId', description: 'Target Group member before which to place the Workspace; `null` appends a same-Group reorder.' }],
+        returns: 'resolution after durability.',
+      },
+      {
         signature: 'archiveSession(sessionId: SessionId, options: ArchiveSessionOptions = {}): Promise<void>',
         description: 'Archive one session durably. The session must exist (live or in session persistence); its workspace accounting — or lack of one — is irrelevant. Without `stopActivity` the session must also be inactive: the `workspace/session-activity` waterfall is asked once, and any reported activity rejects with WorkspaceActiveSessionError before anything is written. With `stopActivity` the archive is written without an activity check, and the `workspace/session-stop` providers are then asked to stop the session\'s work: the durable archive set is what a provider\'s `agent/pre-step` gate reads, so every wake the stops induce is already blocked. Archiving drops the session\'s pin in the same durable write (pinning and archival are mutually exclusive). An already archived id resolves without writing, asking, or stopping.',
         parameters: [{ name: 'sessionId', description: 'The session to archive.' }, { name: 'options', description: 'Whether running work is stopped instead of refusing.' }],
@@ -4679,6 +4868,13 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Unpin one session durably by dropping it from the registry-global pin set. Unpinning runs no session-existence check because removing an id cannot introduce an unknown one, so an entry whose session is gone still resolves. An id that is not pinned resolves without writing.',
         parameters: [{ name: 'sessionId', description: 'The session to unpin.' }],
         returns: 'resolution after durability.',
+      },
+      {
+        signature: 'deleteSession(sessionId: SessionId): Promise<void>',
+        description: 'Permanently delete one session: erase its stored log through `sessionPersistence.delete`, then drop every registry reference to it (archive set, pin set, workspace membership, header and path caches). Persistence is erased first, so a failure there leaves the session and its registry entries untouched; a failure while scrubbing leaves only orphan ids that the membership filter already ignores. A session persistence no longer holds still has its registry references scrubbed.',
+        parameters: [{ name: 'sessionId', description: 'The session to delete.' }],
+        returns: 'resolution after the registry no longer references the session.',
+        throws: ['{SessionAlreadyOwnedError} when a live handle holds the session.'],
       },
       {
         signature: 'async resolveByPath(path: string): Promise<Workspace | undefined>',
@@ -6374,6 +6570,78 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'EveryScheduleRecord',
     declaration: 'export interface EveryScheduleRecord {\n    readonly id: ScheduleId;\n    readonly kind: \'every\';\n    readonly title: string;\n    readonly prompt: string;\n    readonly everySeconds: number;\n    readonly scheduledAt: string;\n}',
+  },
+  {
+    name: 'ExpertDeleteRequest',
+    declaration: 'export interface ExpertDeleteRequest {\n    readonly id: ExpertId;\n}',
+  },
+  {
+    name: 'ExpertDocumentCreateRequest',
+    declaration: 'export interface ExpertDocumentCreateRequest {\n    readonly title: string;\n    readonly text: string;\n}',
+  },
+  {
+    name: 'ExpertDocumentDeleteRequest',
+    declaration: 'export interface ExpertDocumentDeleteRequest {\n    readonly id: ExpertDocumentId;\n}',
+  },
+  {
+    name: 'ExpertDocumentId',
+    declaration: 'export type ExpertDocumentId = Branded<\'ExpertDocumentId\'>;',
+  },
+  {
+    name: 'ExpertDocumentValue',
+    declaration: 'export interface ExpertDocumentValue {\n    readonly id: ExpertDocumentId;\n    readonly title: string;\n    readonly bytes: number;\n    readonly createdAt: number;\n}',
+  },
+  {
+    name: 'ExpertId',
+    declaration: 'export type ExpertId = Branded<\'ExpertId\'>;',
+  },
+  {
+    name: 'ExpertKnowledgeBaseDeleteRequest',
+    declaration: 'export interface ExpertKnowledgeBaseDeleteRequest {\n    readonly id: ExpertKnowledgeBaseId;\n}',
+  },
+  {
+    name: 'ExpertKnowledgeBaseId',
+    declaration: 'export type ExpertKnowledgeBaseId = Branded<\'ExpertKnowledgeBaseId\'>;',
+  },
+  {
+    name: 'ExpertKnowledgeBaseSaveRequest',
+    declaration: 'export interface ExpertKnowledgeBaseSaveRequest {\n    readonly id?: ExpertKnowledgeBaseId;\n    readonly name: string;\n    readonly documentIds: readonly ExpertDocumentId[];\n}',
+  },
+  {
+    name: 'ExpertKnowledgeBaseValue',
+    declaration: 'export interface ExpertKnowledgeBaseValue {\n    readonly id: ExpertKnowledgeBaseId;\n    readonly name: string;\n    readonly documentIds: readonly ExpertDocumentId[];\n    readonly createdAt: number;\n    readonly updatedAt: number;\n}',
+  },
+  {
+    name: 'ExpertLibraryValue',
+    declaration: 'export interface ExpertLibraryValue {\n    readonly experts: readonly ExpertValue[];\n    readonly documents: readonly ExpertDocumentValue[];\n    readonly knowledgeBases: readonly ExpertKnowledgeBaseValue[];\n    readonly limits: ExpertLimits;\n}',
+  },
+  {
+    name: 'ExpertLimits',
+    declaration: 'export interface ExpertLimits {\n    readonly maxExperts: number;\n    readonly maxSoulBytes: number;\n    readonly maxSkillsPerExpert: number;\n    readonly maxDocuments: number;\n    readonly maxDocumentBytes: number;\n    readonly maxKnowledgeBases: number;\n    readonly maxDocumentsPerKnowledgeBase: number;\n    readonly maxLibraryBytes: number;\n    readonly maxInvocationLibraryBytes: number;\n}',
+  },
+  {
+    name: 'ExpertListRequest',
+    declaration: 'export type ExpertListRequest = Record<string, never>;',
+  },
+  {
+    name: 'ExpertRankedEntry',
+    declaration: 'export interface ExpertRankedEntry {\n    readonly id: ExpertId;\n    readonly name: string;\n    readonly soul: string;\n}',
+  },
+  {
+    name: 'ExpertRankedRequest',
+    declaration: 'export type ExpertRankedRequest = Record<string, never>;',
+  },
+  {
+    name: 'ExpertRankedValue',
+    declaration: 'export interface ExpertRankedValue {\n    readonly experts: readonly ExpertRankedEntry[];\n}',
+  },
+  {
+    name: 'ExpertSaveRequest',
+    declaration: 'export interface ExpertSaveRequest {\n    readonly id?: ExpertId;\n    readonly name: string;\n    readonly enabled: boolean;\n    readonly soul: string;\n    readonly skills: readonly string[];\n    readonly documentIds: readonly ExpertDocumentId[];\n    readonly knowledgeBaseIds: readonly ExpertKnowledgeBaseId[];\n}',
+  },
+  {
+    name: 'ExpertValue',
+    declaration: 'export interface ExpertValue {\n    readonly id: ExpertId;\n    readonly name: string;\n    readonly enabled: boolean;\n    readonly soul: string;\n    readonly skills: readonly string[];\n    readonly documentIds: readonly ExpertDocumentId[];\n    readonly knowledgeBaseIds: readonly ExpertKnowledgeBaseId[];\n    readonly createdAt: number;\n    readonly updatedAt: number;\n}',
   },
   {
     name: 'FeedbackCategory',
@@ -8356,6 +8624,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SessionCreateValue {\n    readonly sessionId: SessionId;\n    readonly agentPreset?: string;\n}',
   },
   {
+    name: 'SessionDeleteRequest',
+    declaration: 'export interface SessionDeleteRequest {\n    readonly sessionId: SessionId;\n}',
+  },
+  {
+    name: 'SessionDeleteValue',
+    declaration: 'export interface SessionDeleteValue {\n    readonly sessionId: SessionId;\n}',
+  },
+  {
     name: 'SessionEndInput',
     declaration: 'export interface SessionEndInput {\n    reason: \'clear\' | \'logout\' | \'prompt_input_exit\' | \'resume\' | \'other\';\n    sessionId: string;\n}',
   },
@@ -8610,6 +8886,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SessionPersistenceCreateOptions',
     declaration: 'export interface SessionPersistenceCreateOptions {\n    readonly signal?: AbortSignal;\n    readonly inheritedEventCount?: SessionLogOffset;\n}',
+  },
+  {
+    name: 'SessionPersistenceDeleteOptions',
+    declaration: 'export interface SessionPersistenceDeleteOptions {\n    readonly signal?: AbortSignal;\n}',
   },
   {
     name: 'SessionPersistenceListOptions',
@@ -9036,6 +9316,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type SignInErrorCode = \'no-response\' | \'network\' | \'protocol\' | \'expired\' | \'storage\';',
   },
   {
+    name: 'SkillAddRequest',
+    declaration: 'export interface SkillAddRequest {\n    readonly path: string;\n}',
+  },
+  {
     name: 'SkillCandidate',
     declaration: 'export interface SkillCandidate extends SkillSummary {\n    readonly rank: number;\n    readonly locator: unknown;\n    readonly metadata?: Readonly<Record<string, unknown>>;\n}',
   },
@@ -9050,6 +9334,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SkillEntry',
     declaration: 'export interface SkillEntry {\n    readonly path?: string;\n    readonly name: string;\n    readonly description: string;\n    readonly whenToUse?: string;\n    readonly modelInvocable: boolean;\n}',
+  },
+  {
+    name: 'SkillInventoryEntry',
+    declaration: 'export interface SkillInventoryEntry {\n    readonly name: string;\n    readonly description: string;\n    readonly provider: string;\n    readonly source: string;\n    readonly path?: string;\n    readonly enabled: boolean;\n}',
+  },
+  {
+    name: 'SkillInventoryRequest',
+    declaration: 'export interface SkillInventoryRequest {\n    readonly cwd?: string;\n}',
+  },
+  {
+    name: 'SkillInventoryValue',
+    declaration: 'export interface SkillInventoryValue {\n    readonly skills: readonly SkillInventoryEntry[];\n}',
   },
   {
     name: 'SkillInvocationPolicy',
@@ -9097,7 +9393,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SkillViewOptions',
-    declaration: 'export interface SkillViewOptions extends SkillLookupOptions {\n    readonly scope?: ScopeKey | undefined;\n}',
+    declaration: 'export interface SkillViewOptions extends SkillLookupOptions {\n    readonly scope?: ScopeKey | undefined;\n    readonly includeHidden?: boolean;\n}',
   },
   {
     name: 'SpeechCatalog',
@@ -10165,7 +10461,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'Workspace',
-    declaration: 'export interface Workspace {\n    readonly id: WorkspaceId;\n    readonly path: string;\n    readonly title: string;\n    readonly createdAt: string;\n    readonly updatedAt: string;\n    readonly sessionIds: readonly SessionId[];\n    setTitle(title: string): Promise<void>;\n    attachSession(sessionId: SessionId): Promise<void>;\n    insertSessionBefore(sessionId: SessionId, beforeSessionId?: SessionId): Promise<void>;\n    detachSession(sessionId: SessionId): Promise<void>;\n    status(): Promise<\'ok\' | \'missing-dir\'>;\n}',
+    declaration: 'export interface Workspace {\n    readonly id: WorkspaceId;\n    readonly path: string;\n    readonly title: string;\n    readonly createdAt: string;\n    readonly updatedAt: string;\n    readonly sessionIds: readonly SessionId[];\n    readonly folders: readonly WorkspaceFolder[];\n    setTitle(title: string): Promise<void>;\n    attachSession(sessionId: SessionId): Promise<void>;\n    insertSessionBefore(sessionId: SessionId, beforeSessionId?: SessionId): Promise<void>;\n    detachSession(sessionId: SessionId): Promise<void>;\n    createFolder(title: string): Promise<WorkspaceFolder>;\n    setFolderTitle(folderId: FolderId, title: string): Promise<void>;\n    deleteFolder(folderId: FolderId): Promise<void>;\n    moveSessionToFolder(sessionId: SessionId, folderId?: FolderId): Promise<void>;\n    status(): Promise<\'ok\' | \'missing-dir\'>;\n}',
   },
   {
     name: 'WorkspaceArchiveSessionRequest',
@@ -10177,7 +10473,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'WorkspaceBaseline',
-    declaration: 'export interface WorkspaceBaseline {\n    readonly items: readonly WorkspaceView[];\n    readonly archivedSessionIds: readonly SessionId[];\n    readonly pinnedSessionIds: readonly SessionId[];\n}',
+    declaration: 'export interface WorkspaceBaseline {\n    readonly items: readonly WorkspaceView[];\n    readonly topLevelWorkspaceIds: readonly WorkspaceId[];\n    readonly groups: readonly WorkspaceGroupView[];\n    readonly archivedSessionIds: readonly SessionId[];\n    readonly pinnedSessionIds: readonly SessionId[];\n}',
   },
   {
     name: 'WorkspaceByteRange',
@@ -10256,12 +10552,60 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type WorkspaceFileWatchFrame = {\n    readonly kind: \'ready\';\n} | {\n    readonly kind: \'change\';\n    readonly change: WorkspaceFileChange;\n};',
   },
   {
+    name: 'WorkspaceFolder',
+    declaration: 'export interface WorkspaceFolder {\n    readonly id: FolderId;\n    readonly title: string;\n    readonly createdAt: string;\n    readonly updatedAt: string;\n    readonly sessionIds: readonly SessionId[];\n}',
+  },
+  {
+    name: 'WorkspaceFolderCreateRequest',
+    declaration: 'export interface WorkspaceFolderCreateRequest {\n    readonly workspaceId: WorkspaceId;\n    readonly title: string;\n}',
+  },
+  {
+    name: 'WorkspaceFolderDeleteRequest',
+    declaration: 'export interface WorkspaceFolderDeleteRequest {\n    readonly workspaceId: WorkspaceId;\n    readonly folderId: FolderId;\n}',
+  },
+  {
+    name: 'WorkspaceFolderRenameRequest',
+    declaration: 'export interface WorkspaceFolderRenameRequest {\n    readonly workspaceId: WorkspaceId;\n    readonly folderId: FolderId;\n    readonly title: string;\n}',
+  },
+  {
+    name: 'WorkspaceFolderValue',
+    declaration: 'export interface WorkspaceFolderValue {\n    readonly folder: WorkspaceFolderView;\n    readonly workspace: WorkspaceView;\n}',
+  },
+  {
+    name: 'WorkspaceFolderView',
+    declaration: 'export interface WorkspaceFolderView {\n    readonly folderId: FolderId;\n    readonly title: string;\n    readonly sessionIds: readonly SessionId[];\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
+  },
+  {
     name: 'WorkspaceFollowFrame',
     declaration: 'export type WorkspaceFollowFrame = {\n    readonly type: \'baseline\';\n    readonly value: WorkspaceBaseline;\n} | WorkspaceFollowIncrement;',
   },
   {
     name: 'WorkspaceFollowIncrement',
-    declaration: 'export type WorkspaceFollowIncrement = {\n    readonly type: \'replace\';\n    readonly value: WorkspaceBaseline;\n} | {\n    readonly type: \'upsert\';\n    readonly workspace: WorkspaceView;\n} | {\n    readonly type: \'remove\';\n    readonly workspaceId: WorkspaceId;\n} | {\n    readonly type: \'order\';\n    readonly workspaceIds: readonly WorkspaceId[];\n} | {\n    readonly type: \'archived\';\n    readonly archivedSessionIds: readonly SessionId[];\n} | {\n    readonly type: \'pinned\';\n    readonly pinnedSessionIds: readonly SessionId[];\n};',
+    declaration: 'export type WorkspaceFollowIncrement = {\n    readonly type: \'replace\';\n    readonly value: WorkspaceBaseline;\n} | {\n    readonly type: \'upsert\';\n    readonly workspace: WorkspaceView;\n} | {\n    readonly type: \'remove\';\n    readonly workspaceId: WorkspaceId;\n} | {\n    readonly type: \'layout\';\n    readonly layout: WorkspaceLayout;\n} | {\n    readonly type: \'archived\';\n    readonly archivedSessionIds: readonly SessionId[];\n} | {\n    readonly type: \'pinned\';\n    readonly pinnedSessionIds: readonly SessionId[];\n};',
+  },
+  {
+    name: 'WorkspaceGroup',
+    declaration: 'export interface WorkspaceGroup {\n    readonly id: GroupId;\n    readonly title: string;\n    readonly createdAt: string;\n    readonly updatedAt: string;\n    readonly workspaceIds: readonly WorkspaceId[];\n    setTitle(title: string): Promise<void>;\n}',
+  },
+  {
+    name: 'WorkspaceGroupCreateRequest',
+    declaration: 'export interface WorkspaceGroupCreateRequest {\n    readonly title: string;\n}',
+  },
+  {
+    name: 'WorkspaceGroupDeleteRequest',
+    declaration: 'export interface WorkspaceGroupDeleteRequest {\n    readonly groupId: GroupId;\n}',
+  },
+  {
+    name: 'WorkspaceGroupRenameRequest',
+    declaration: 'export interface WorkspaceGroupRenameRequest {\n    readonly groupId: GroupId;\n    readonly title: string;\n}',
+  },
+  {
+    name: 'WorkspaceGroupValue',
+    declaration: 'export interface WorkspaceGroupValue {\n    readonly group: WorkspaceGroupView;\n    readonly layout: WorkspaceLayout;\n}',
+  },
+  {
+    name: 'WorkspaceGroupView',
+    declaration: 'export interface WorkspaceGroupView {\n    readonly groupId: GroupId;\n    readonly title: string;\n    readonly workspaceIds: readonly WorkspaceId[];\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
   },
   {
     name: 'WorkspaceInsertBeforeRequest',
@@ -10270,6 +10614,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WorkspaceInsertSessionBeforeRequest',
     declaration: 'export interface WorkspaceInsertSessionBeforeRequest {\n    readonly workspaceId: WorkspaceId;\n    readonly sessionId: SessionId;\n    readonly beforeSessionId?: SessionId;\n}',
+  },
+  {
+    name: 'WorkspaceLayout',
+    declaration: 'export interface WorkspaceLayout {\n    readonly topLevelWorkspaceIds: readonly WorkspaceId[];\n    readonly groups: readonly WorkspaceGroupView[];\n}',
+  },
+  {
+    name: 'WorkspaceLayoutValue',
+    declaration: 'export interface WorkspaceLayoutValue {\n    readonly layout: WorkspaceLayout;\n}',
+  },
+  {
+    name: 'WorkspaceMoveSessionToFolderRequest',
+    declaration: 'export interface WorkspaceMoveSessionToFolderRequest {\n    readonly workspaceId: WorkspaceId;\n    readonly sessionId: SessionId;\n    readonly folderId?: FolderId;\n}',
+  },
+  {
+    name: 'WorkspaceMoveToGroupRequest',
+    declaration: 'export interface WorkspaceMoveToGroupRequest {\n    readonly workspaceId: WorkspaceId;\n    readonly groupId?: GroupId;\n    readonly beforeWorkspaceId?: WorkspaceId | null;\n}',
   },
   {
     name: 'WorkspaceOrderValue',
@@ -10301,7 +10661,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'WorkspaceView',
-    declaration: 'export interface WorkspaceView {\n    readonly workspaceId: WorkspaceId;\n    readonly path: string;\n    readonly title: string;\n    readonly sessionIds: readonly SessionId[];\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
+    declaration: 'export interface WorkspaceView {\n    readonly workspaceId: WorkspaceId;\n    readonly path: string;\n    readonly title: string;\n    readonly sessionIds: readonly SessionId[];\n    readonly folders: readonly WorkspaceFolderView[];\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
   },
 ]
 

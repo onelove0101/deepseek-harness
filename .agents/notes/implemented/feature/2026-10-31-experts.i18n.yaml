@@ -1,6 +1,25 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-10-31-experts.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-31-experts.md
-2026-10-31-experts.md: a4dc6eab0cbbd58999934249e8b26c7625f4806a
-2026-10-31-experts.zh.md: f5b6a80de8308908d45d80bc8f1e4ac1c30623f6
+/agent-note-experts:
+  en: 9af7c0ce127bc09b
+  zh: d46a8f094d8c11b0
+/agent-note-experts/problem:
+  en: 9e36259008b6a9b2
+  zh: 5091fb5e8d65a243
+/agent-note-experts/decision:
+  en: a8e0f61385a97bb9
+  zh: f8d14d4c8ad5b2f0
+/agent-note-experts/alternatives-considered:
+  en: 0a6c461b4b707b35
+  zh: d738f7b531df4e6b
+/agent-note-experts/consequences:
+  en: 5fe4396e73c7d3d3
+  zh: 1b5fa14ea6ab5de6
+/agent-note-experts/testing:
+  en: cec200c6a3780bff
+  zh: aeb25043765484f6
+/agent-note-experts/related:
+  en: eb09400422416aa7
+  zh: 0a42f7f09eec0954

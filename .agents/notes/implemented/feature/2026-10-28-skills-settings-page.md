@@ -43,6 +43,3 @@ Disabling is by name and global: a disabled name also hides a project skill with
 `packages/skill/skill/tests/skill.spec.ts` pins hidden names across `snapshot`, `list`, `get`, `includeHidden`, the change event, and the disposer owning only its own source. `packages/skill/skill-filesystem/tests/skill-filesystem.spec.ts` pins single-skill directories and rescanning after invalidation. `packages/api/session-controller/tests/session-skill-inventory.host.spec.ts` runs the Remote against a real registry and file settings provider: add, enable state, disabling, refusals, rollback, and provider loss. The client package tests pin the controller join, toggle writes, load-on-mount, and registration; `packages/client/ui-settings-general/tests` and `apps/web/tests/expected/settings-chrome/dialog-en.expected.md` pin the navigation entry.
 
 ## Related
-
-- [Skill invocation policy](2026-07-28-skill-invocation-policy.md) — the model/user invocation controls that the hidden-name filter composes with.
-- [Session unarchive Settings page](2026-09-12-session-unarchive-settings-page.md) — the Settings page registration this page follows.
