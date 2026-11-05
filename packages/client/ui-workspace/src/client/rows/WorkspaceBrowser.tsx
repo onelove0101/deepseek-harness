@@ -290,9 +290,9 @@ function workspaceGroupHalf(e: { clientY: number; currentTarget: HTMLElement }):
 
 type SessionTreeProps = Pick<
   WorkspaceBrowserProps,
-  'useSessionStatus' | 'startSession' | 'open' | 'openSessionMenu' | 'openWorkspaceMenu' | 'useContextMenuTarget' | 'useContextMenu'
+  'useSessionStatus' | 'startSession' | 'open' | 'renderFactorySlot' | 'useContextMenuTarget' | 'useContextMenu'
   | 'insertWorkspaceBefore' | 'moveToGroup' | 't' | 'usePanelInfo'
-  | 'useRemoteAccess' | 'useSessionAccess' | 'useWorkspaceAccess' | 'openGroupMenu' | 'openFolderMenu'
+  | 'useRemoteAccess' | 'useSessionAccess' | 'useWorkspaceAccess'
 > & PropsRenderSlots<
   | 'sidebar.workspaces.session.row.action'
   | 'sidebar.session.row.trailing'
@@ -355,11 +355,11 @@ function EmptySessions({ rowState, onLeaveArchivedOnly, t }: Pick<SessionTreePro
 /** The scrolling session tree; unmounting drops the sessions subscription and the session watermarks. */
 function SessionTree({
   list, useSessionStatus, startSession, open, workspaces, ungroupedSessionIds, topLevelWorkspaceIds, workspaceGroups,
-  openGroupMenu, openFolderMenu, useRemoteAccess,
+  useRemoteAccess,
   rowState, onLeaveArchivedOnly,
   workspaceReady, animationResetKey, usePanelInfo, useSessionAccess, useWorkspaceAccess,
   onSessionRenameRequest,
-  renderSlot, openSessionMenu, openWorkspaceMenu, useContextMenuTarget, useContextMenu,
+  renderSlot, renderFactorySlot, useContextMenuTarget, useContextMenu,
   insertWorkspaceBefore, moveToGroup,
   nestWorkspaces, groupExpansion, setGroupExpanded,
   setSessionOrder, home, t,
@@ -642,7 +642,7 @@ function SessionTree({
         onOpen={open}
         onRenameRequest={onSessionRenameRequest}
         renderSlot={renderSlot}
-        openSessionMenu={openSessionMenu} useContextMenu={useContextMenu}
+        renderFactorySlot={renderFactorySlot} useContextMenu={useContextMenu}
         useContextMenuTarget={useContextMenuTarget}
         onReveal={node.id === revealSessionId && group.key === revealGroup
           ? () => { onSessionRevealed(node.id) }
@@ -688,7 +688,7 @@ function SessionTree({
               running={members.some(node => node.running || node.runningSubagentCount > 0)}
               sessionCount={members.length}
               onToggle={() => { setGroupExpanded(folderKey, !folderExpanded) }}
-              openFolderMenu={openFolderMenu} useContextMenu={useContextMenu} useContextMenuTarget={useContextMenuTarget}
+              renderFactorySlot={renderFactorySlot} useContextMenu={useContextMenu} useContextMenuTarget={useContextMenuTarget}
               useWorkspaceAccess={useWorkspaceAccess} t={t}
             />
             {folderExpanded && members.map(node => renderSession(node, group, false))}
@@ -770,7 +770,7 @@ function SessionTree({
         <ProjectRowItem
           newShortcut={shortcuts.find(row => row.id === 'session.new')}
           group={group}
-          openWorkspaceMenu={openWorkspaceMenu} useContextMenu={useContextMenu} useContextMenuTarget={useContextMenuTarget}
+          renderFactorySlot={renderFactorySlot} useContextMenu={useContextMenu} useContextMenuTarget={useContextMenuTarget}
           useRemoteAccess={useRemoteAccess}
           useWorkspaceAccess={useWorkspaceAccess}
           containsCurrentDescendant={currentAncestors.has(group.key)}
@@ -871,7 +871,7 @@ function SessionTree({
             running={members.some(member => member.running || runningAncestors.has(member.key))}
             workspaceCount={members.length}
             onToggle={() => { setGroupExpanded(workspaceGroupExpansionKey(workspaceGroup.groupId), !expanded) }}
-            openGroupMenu={openGroupMenu} useContextMenu={useContextMenu} useContextMenuTarget={useContextMenuTarget}
+            renderFactorySlot={renderFactorySlot} useContextMenu={useContextMenu} useContextMenuTarget={useContextMenuTarget}
             useRemoteAccess={useRemoteAccess} t={t}
           />
           {expanded && <div role="group">{members.map(member => renderGroup(member, 1))}</div>}
@@ -917,7 +917,7 @@ function SessionTree({
 function FlatList({
   list, sessionIds, rowState, onLeaveArchivedOnly, useSessionStatus, useSessionAccess, open, onSessionRenameRequest,
   usePanelInfo, setSessionOrder, workspaceReady, animationResetKey,
-  revealSessionId, onSessionRevealed, renderSlot, openSessionMenu, useContextMenuTarget, useContextMenu, home, t,
+  revealSessionId, onSessionRevealed, renderSlot, renderFactorySlot, useContextMenuTarget, useContextMenu, home, t,
 }: Pick<
   SessionTreeProps,
   | 'useSessionStatus'
@@ -925,7 +925,7 @@ function FlatList({
   | 'open'
   | 'onSessionRenameRequest'
   | 'renderSlot'
-  | 'openSessionMenu' | 'useContextMenuTarget' | 'useContextMenu'
+  | 'renderFactorySlot' | 'useContextMenuTarget' | 'useContextMenu'
   | 'usePanelInfo'
   | 'setSessionOrder'
   | 'workspaceReady'
@@ -986,7 +986,7 @@ function FlatList({
               onOpen={open}
               onRenameRequest={onSessionRenameRequest}
               renderSlot={renderSlot}
-              openSessionMenu={openSessionMenu} useContextMenu={useContextMenu}
+              renderFactorySlot={renderFactorySlot} useContextMenu={useContextMenu}
               useContextMenuTarget={useContextMenuTarget}
               onReveal={node.id === revealSessionId
                 ? () => { onSessionRevealed(node.id) }
@@ -1148,7 +1148,6 @@ export function WorkspaceBrowser({
   notifyArchivedNotOpenable,
   renameWorkspace, useWorkspaceActionRequest, settleWorkspaceAction,
   deleteWorkspace, moveToGroup, createGroup, renameGroup, deleteGroup, createFolder, renameFolder, deleteFolder,
-  openGroupMenu, openFolderMenu,
   insertWorkspaceBefore,
   unarchiveSession,
   createWorkspace,
@@ -1162,7 +1161,7 @@ export function WorkspaceBrowser({
   requestAddWorkspace,
   closeAddWorkspace,
   setDirectoryBusy,
-  renderSlot, openSessionMenu, openWorkspaceMenu, useContextMenuTarget, useContextMenu,
+  renderSlot, renderFactorySlot, useContextMenuTarget, useContextMenu,
   t,
 }: WorkspaceBrowserProps) {
   const home = useHostInfo(info => info.home)
@@ -1647,7 +1646,7 @@ export function WorkspaceBrowser({
                 open={guardedOpen}
                 onSessionRenameRequest={requestSessionRename}
                 renderSlot={renderSlot}
-                openSessionMenu={openSessionMenu} useContextMenu={useContextMenu}
+                renderFactorySlot={renderFactorySlot} useContextMenu={useContextMenu}
                 useContextMenuTarget={useContextMenuTarget}
                 setSessionOrder={saveSessionOrder}
                 revealSessionId={revealSessionId}
@@ -1667,14 +1666,11 @@ export function WorkspaceBrowser({
                 useSessionStatus={useSessionStatus}
                 onSessionRenameRequest={requestSessionRename}
                 renderSlot={renderSlot}
-                openSessionMenu={openSessionMenu} useContextMenu={useContextMenu}
-                openWorkspaceMenu={openWorkspaceMenu}
+                renderFactorySlot={renderFactorySlot} useContextMenu={useContextMenu}
                 useContextMenuTarget={useContextMenuTarget}
                 workspaces={orderedWorkspaces}
                 topLevelWorkspaceIds={topLevelWorkspaceIds}
                 workspaceGroups={workspaceGroups}
-                openGroupMenu={openGroupMenu}
-                openFolderMenu={openFolderMenu}
                 ungroupedSessionIds={orderedUngroupedSessionIds}
                 workspaceReady={workspaceReady}
                 nestWorkspaces={groupBy === 'workspace-tree'}

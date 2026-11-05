@@ -21,6 +21,8 @@ import { createWorkspaceShortcutControls } from '../src/client/shortcuts.ts'
 import { createWorkspaceViewStore, FLAT_SESSION_ORDER_KEY } from '../src/client/stores.ts'
 import { UNGROUPED_KEY, folderExpansionKey, ungroupedExpansionKey, workspaceExpansionKey } from '../src/client/tree.ts'
 import { WorkspaceBrowser } from '../src/client/rows/WorkspaceBrowser.tsx'
+import { renderMenuButton } from './menu-button.tsx'
+import rowCss from '../src/client/rows/Rows.module.css'
 import { zh } from '../src/client/locales.ts'
 
 // Every fixture carries the resource hook the resources plugin merges into GlobalStandardProps.
@@ -134,10 +136,8 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
   const request = createSnapshotStore<WorkspaceActionRequest | null>(null)
   const store = createWorkspaceViewStore().create()
   const props: WorkspaceBrowserProps = {
-    openWorkspaceMenu: vi.fn(),
     useWorkspaceActionRequest: bindSnapshotSelector(request),
     settleWorkspaceAction: () => { request.set(null) },
-    openSessionMenu: vi.fn(),
     useContextMenuTarget: selector => selector(null),
     useShortcuts: select => select([]),
     useWorkspaceShortcuts: bindSnapshotSelector(controls.state),
@@ -173,14 +173,13 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     createFolder: vi.fn(async () => {}),
     renameFolder: vi.fn(async () => {}),
     deleteFolder: vi.fn(async () => {}),
-    openGroupMenu: vi.fn(),
-    openFolderMenu: vi.fn(),
     unarchiveSession: vi.fn(async () => {}),
     insertWorkspaceBefore: vi.fn(async () => {}),
     createWorkspace: vi.fn(async () => workspace('created', [])),
     useDirectoryFlow: bindSnapshotSelector({ getSnapshot: () => true, subscribe: () => () => {} }),
     useHostInfo: selector => selector({ home: undefined, isLoopback: true }),
     renderSlot: renderDirectoryFlowOnly,
+    renderFactorySlot: renderMenuButton,
     t,
     ...overrides,
   }
@@ -208,6 +207,28 @@ function browserExpand(b: ReturnType<typeof mount>, workspaceId: WorkspaceId, fo
 }
 
 describe('WorkspaceBrowser', () => {
+  it.each(['workspace', 'flat', 'ungrouped'] as const)('passes the standard menu factory through the %s list', (mode) => {
+    const preferences = createWorkspaceViewStore().create()
+    preferences.actions.setGroupBy(mode === 'flat' ? 'flat' : 'workspace')
+    preferences.actions.setGroupExpanded(mode === 'ungrouped' ? UNGROUPED_KEY : 'alpha', true)
+    const renderFactorySlot = vi.fn(renderMenuButton)
+    mount({
+      useSessions: hook(sessionState([summary('session-one', 10)])),
+      useWorkspaces: hook(workspaceState(mode === 'ungrouped' ? [] : [workspace('alpha', ['session-one'])])),
+      renderFactorySlot,
+    })
+    expect(renderFactorySlot).toHaveBeenCalledWith('contextMenu.button', {
+      target: { kind: 'session', value: { sessionId: sid('session-one'), displayTitle: 'session-one' } },
+      label: '会话“session-one”的操作', className: rowCss.iconButton,
+    })
+    if (mode === 'workspace') {
+      expect(renderFactorySlot).toHaveBeenCalledWith('contextMenu.button', {
+        target: { kind: 'workspace', value: { workspaceId: wid('alpha'), path: '/projects/alpha', displayTitle: 'alpha' } },
+        label: '工作区“alpha”的操作', className: rowCss.iconButton,
+      })
+    }
+  })
+
   it('binds the list area as the section scroller only while the sidebar is wide', () => {
     const bindScrollerRef = vi.fn()
     const browser = mount({ useSectionScroller: () => ({ bindScrollerRef }) })
@@ -2717,18 +2738,20 @@ describe('WorkspaceBrowser', () => {
     })
 
     it('renders a Group row whose actions button opens the Group menu and whose label toggles expansion', () => {
-      const openGroupMenu = vi.fn()
+      const renderFactorySlot = vi.fn(renderMenuButton)
       const b = mount({
         useWorkspaces: hook(workspaceState([workspace('alpha', [], 'Alpha')], [], [], {
           topLevelWorkspaceIds: [], groups: [group('g-research', 'Research', ['alpha'])],
         })),
-        openGroupMenu,
+        renderFactorySlot,
       })
       // A collapsed Group hides its member Workspaces.
       expect(screen.queryByText('Alpha')).toBeNull()
-      fireEvent.click(screen.getByRole('button', { name: '工作区组“Research”的操作' }))
-      expect(openGroupMenu).toHaveBeenCalledOnce()
-      expect(openGroupMenu.mock.calls[0]).toMatchObject(['g-research', 'Research', {}, 'toggle'])
+      expect(screen.getByRole('button', { name: '工作区组“Research”的操作' })).toBeTruthy()
+      expect(renderFactorySlot).toHaveBeenCalledWith('contextMenu.button', {
+        target: { kind: 'workspaceGroup', value: { groupId: 'g-research', displayTitle: 'Research' } },
+        label: '工作区组“Research”的操作', className: rowCss.iconButton,
+      })
       fireEvent.click(screen.getByText('Research'))
       expect(screen.getByText('Alpha')).toBeTruthy()
       expect(b.store.getSnapshot().groupExpansion).toEqual({ 'workspace-group:g-research': true })
@@ -2977,13 +3000,13 @@ describe('WorkspaceBrowser', () => {
     })
 
     it('renders Folder rows under an expanded Workspace and opens the Folder menu', () => {
-      const openFolderMenu = vi.fn()
+      const renderFactorySlot = vi.fn(renderMenuButton)
       const browser = mount({
         useSessions: hook(sessionState([summary('draft', 1), summary('loose', 2)])),
         useWorkspaces: hook(workspaceState([
           workspace('alpha', ['draft', 'loose'], 'Alpha', [folder('f-exp', 'Experiments', ['draft'])]),
         ])),
-        openFolderMenu,
+        renderFactorySlot,
       })
       // A collapsed Workspace hides its Folders.
       expect(screen.queryByText('Experiments')).toBeNull()
@@ -2992,9 +3015,11 @@ describe('WorkspaceBrowser', () => {
       // A collapsed Folder hides the Sessions filed in it; the root Session stays.
       expect(screen.queryByText('draft')).toBeNull()
       expect(screen.getByText('loose')).toBeTruthy()
-      fireEvent.click(screen.getByRole('button', { name: '文件夹“Experiments”的操作' }))
-      expect(openFolderMenu).toHaveBeenCalledOnce()
-      expect(openFolderMenu.mock.calls[0]).toMatchObject(['alpha', 'f-exp', 'Experiments', {}, 'toggle'])
+      expect(screen.getByRole('button', { name: '文件夹“Experiments”的操作' })).toBeTruthy()
+      expect(renderFactorySlot).toHaveBeenCalledWith('contextMenu.button', {
+        target: { kind: 'workspaceFolder', value: { workspaceId: wid('alpha'), folderId: 'f-exp', displayTitle: 'Experiments' } },
+        label: '文件夹“Experiments”的操作', className: rowCss.iconButton,
+      })
       fireEvent.click(screen.getByText('Experiments'))
       expect(screen.getByText('draft')).toBeTruthy()
       expect(browser.store.getSnapshot().groupExpansion[folderExpansionKey(wid('alpha'), 'f-exp')]).toBe(true)
