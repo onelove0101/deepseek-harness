@@ -6,11 +6,8 @@
 #
 #   dsh plugin --profile <name> add /Users/jdong/iproject/dsh/my-plugin/skill-injector-plugin
 #
-# After install, open DSH settings and fill the "skill-injector" section's
-# skillPaths with the directories whose skills should be auto-loaded, e.g.:
-#
-#   skillPaths:
-#     - /Users/jdong/AI-D/AI-D-OB/Zuora/Dz-agent/skills
+# After install, set `skillPaths` below (or in the profile's entry) to the
+# directories whose skills should be auto-loaded.
 #
 - insert:
     - id: skill-injector
@@ -18,3 +15,4 @@
       config:
         enabled: true
         maxBytes: 131072
+        skillPaths: []

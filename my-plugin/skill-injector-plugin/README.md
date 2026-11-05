@@ -28,17 +28,17 @@ Then restart dsh (for example, run `dh-web`) so the plugin takes effect.
 
 ### Step 2: Configure the skill paths
 
-In DSH's **settings document** `~/.dsh/settings.yaml`, add (or edit the existing) `skill-injector` section with your skill directory paths:
+Set `skillPaths` in the plugin's `config` in the profile's plugin entry (`skill-injector`), for example in `cordis.patch.yml`:
 
 ```yaml
-skill-injector:
-  skillPaths:
-    - /Users/jdong/AI-D/AI-D-OB/Zuora/Dz-agent/skills
+- id: skill-injector
+  name: skill-injector-plugin
+  config:
+    skillPaths:
+      - /Users/jdong/AI-D/AI-D-OB/Zuora/Dz-agent/skills
 ```
 
-Changes **take effect immediately** (the settings file is hot-reloaded); open a new session to see the injection.
-
-> Note: this plugin is a host plugin that runs on the command line. The `skill-injector` namespace it registers is currently **not shown in DSH's graphical settings UI** (a GUI configuration card needs an extra client component and a web frontend rebuild, which are not implemented yet). Configure it directly in `settings.yaml`.
+Restart `dsh web` after changing it; open a new session to see the injection.
 
 > Each item in `skillPaths` can be:
 > - A directory that holds many skills (recommended, such as the skills directory above)

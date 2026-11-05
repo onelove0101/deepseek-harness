@@ -1,7 +1,7 @@
 /**
  * skill-injector-plugin — auto-load configured external skills into memory.
  *
- * Reads a `skill-injector` settings section whose `skillPaths` names the
+ * Reads the `skillPaths` config field, which names the
  * directories whose skills should be available. It does two things:
  *
  *  1. Registers the discovered skills as a standard `ctx.skills` provider, so
@@ -26,7 +26,6 @@ import type {
   SkillDefinition,
   SkillProvider,
 } from '@deepseek-ai/dsh-skill'
-import type {} from '@deepseek-ai/dsh-settings'
 
 /** Durable message source tag for the auto-loaded skill payload. */
 declare module '@deepseek-ai/dsh-llm' {
@@ -44,7 +43,7 @@ declare module '@deepseek-ai/dsh-llm' {
 export const name = 'skill-injector-plugin'
 
 /** Services this plugin requires to mount. */
-export const inject = ['settings', 'skills']
+export const inject = ['skills']
 
 /** Plugin configuration (set in the profile's cordis.patch.yml). */
 export interface Config {
@@ -52,22 +51,13 @@ export interface Config {
   enabled?: boolean
   /** Upper byte budget for the auto-loaded memory message. */
   maxBytes?: number
+  /** Directories whose skills should be discovered and injected. */
+  skillPaths?: string[]
 }
 
 export const Config = Schema.object({
   enabled: Schema.boolean().default(true),
   maxBytes: Schema.number().default(131072),
-})
-
-/** Values stored in the `skill-injector` settings namespace. */
-export interface SkillInjectorSettings {
-  /** Directories whose skills should be discovered and injected. */
-  skillPaths: string[]
-}
-
-const SETTINGS_NS = 'skill-injector'
-
-const settingsSchema = Schema.object({
   skillPaths: Schema.array(Schema.string()).default([]),
 })
 
@@ -241,21 +231,14 @@ export function apply(ctx: Context, config: Config): void {
   if (!config.enabled) return
   const maxBytes = config.maxBytes ?? 131072
 
-  // `settings` and `skills` are injected services (declared above), so the web
-  // (and other base-backed) profiles provide them and access never throws.
-  const settings = ctx.settings.register<typeof SETTINGS_NS, SkillInjectorSettings>(
-    SETTINGS_NS,
-    settingsSchema,
-  )
+  const skillPaths = config.skillPaths ?? []
 
   // 1. Standard skill provider over the configured roots.
-  let invalidate: () => void = () => {}
-  const disposeProvider = ctx.skills.registerProvider(control => {
-    invalidate = control.invalidate
+  const disposeProvider = ctx.skills.registerProvider(() => {
     const provider: SkillProvider = {
       name: PROVIDER_NAME,
       async list() {
-        const paths = settings.get().skillPaths
+        const paths = skillPaths
         const skills = await discoverSkills(paths)
         return skills.map<SkillCandidate>(skill => ({
           name: skill.name,
@@ -285,8 +268,6 @@ export function apply(ctx: Context, config: Config): void {
     }
     return provider
   })
-  // Refresh the standard catalog when the settings document changes.
-  const disposeWatch = settings.watch(() => invalidate())
 
   // 2. Auto-load into memory at the first step of each new session.
   const injected = new Set<string>()
@@ -299,7 +280,7 @@ export function apply(ctx: Context, config: Config): void {
     const sessionKey = String(agent.session.id)
     if (injected.has(sessionKey)) return decision
     signal.throwIfAborted()
-    const paths = settings.get().skillPaths
+    const paths = skillPaths
     if (paths.length === 0) return decision
     const skills = (await discoverSkills(paths)).filter(skill => skill.name !== '')
     if (skills.length === 0) return decision
@@ -320,7 +301,6 @@ export function apply(ctx: Context, config: Config): void {
   })
 
   ctx.effect(() => () => {
-    disposeWatch()
     disposeProvider()
   })
 }

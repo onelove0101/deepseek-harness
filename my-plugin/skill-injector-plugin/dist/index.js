@@ -1,7 +1,7 @@
 /**
  * skill-injector-plugin — auto-load configured external skills into memory.
  *
- * Reads a `skill-injector` settings section whose `skillPaths` names the
+ * Reads the `skillPaths` config field, which names the
  * directories whose skills should be available. It does two things:
  *
  *  1. Registers the discovered skills as a standard `ctx.skills` provider, so
@@ -21,13 +21,10 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm';
 /** Cordis plugin identity. */
 export const name = 'skill-injector-plugin';
 /** Services this plugin requires to mount. */
-export const inject = ['settings', 'skills'];
+export const inject = ['skills'];
 export const Config = Schema.object({
     enabled: Schema.boolean().default(true),
     maxBytes: Schema.number().default(131072),
-});
-const SETTINGS_NS = 'skill-injector';
-const settingsSchema = Schema.object({
     skillPaths: Schema.array(Schema.string()).default([]),
 });
 const SYSTEM_REMINDER_CLOSE = '</system-reminder>';
@@ -191,17 +188,13 @@ export function apply(ctx, config) {
     if (!config.enabled)
         return;
     const maxBytes = config.maxBytes ?? 131072;
-    // `settings` and `skills` are injected services (declared above), so the web
-    // (and other base-backed) profiles provide them and access never throws.
-    const settings = ctx.settings.register(SETTINGS_NS, settingsSchema);
+    const skillPaths = config.skillPaths ?? [];
     // 1. Standard skill provider over the configured roots.
-    let invalidate = () => { };
-    const disposeProvider = ctx.skills.registerProvider(control => {
-        invalidate = control.invalidate;
+    const disposeProvider = ctx.skills.registerProvider(() => {
         const provider = {
             name: PROVIDER_NAME,
             async list() {
-                const paths = settings.get().skillPaths;
+                const paths = skillPaths;
                 const skills = await discoverSkills(paths);
                 return skills.map(skill => ({
                     name: skill.name,
@@ -232,8 +225,6 @@ export function apply(ctx, config) {
         };
         return provider;
     });
-    // Refresh the standard catalog when the settings document changes.
-    const disposeWatch = settings.watch(() => invalidate());
     // 2. Auto-load into memory at the first step of each new session.
     const injected = new Set();
     ctx.on('agent/pre-step', async ({ agent, signal }, next) => {
@@ -244,7 +235,7 @@ export function apply(ctx, config) {
         if (injected.has(sessionKey))
             return decision;
         signal.throwIfAborted();
-        const paths = settings.get().skillPaths;
+        const paths = skillPaths;
         if (paths.length === 0)
             return decision;
         const skills = (await discoverSkills(paths)).filter(skill => skill.name !== '');
@@ -267,7 +258,6 @@ export function apply(ctx, config) {
         return { ...decision, messages: [...decision.messages, memory] };
     });
     ctx.effect(() => () => {
-        disposeWatch();
         disposeProvider();
     });
 }

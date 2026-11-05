@@ -28,17 +28,17 @@ dsh plugin --profile web add /Users/jdong/iproject/dsh/my-plugin/skill-injector-
 
 ### 第二步：配置技能路径
 
-在 DSH 的**设置文档** `~/.dsh/settings.yaml` 里加上（或编辑已经存在的）`skill-injector` 一节，填上技能目录路径：
+在 profile 的 `skill-injector` 插件条目的 `config` 里设置 `skillPaths`（例如 `cordis.patch.yml`）：
 
 ```yaml
-skill-injector:
-  skillPaths:
-    - /Users/jdong/AI-D/AI-D-OB/Zuora/Dz-agent/skills
+- id: skill-injector
+  name: skill-injector-plugin
+  config:
+    skillPaths:
+      - /Users/jdong/AI-D/AI-D-OB/Zuora/Dz-agent/skills
 ```
 
-改完**即时生效**（settings 文件是热加载的），新开一个会话即可看到注入效果。
-
-> 说明：本插件是运行在命令行的 host 插件，它注册的 `skill-injector` 命名空间目前**不会在 DSH 的图形设置界面里显示**（GUI 的配置卡片需要额外的客户端组件和重新构建 web 前端，暂未实现）。所以直接在 `settings.yaml` 里配即可。
+修改后重启 `dsh web`，新开一个会话即可看到注入效果。
 
 > `skillPaths` 的每一项可以填：
 > - 一个"装了很多技能"的目录（推荐，比如上面那个 skills 目录）

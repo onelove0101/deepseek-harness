@@ -1,7 +1,7 @@
 /**
  * skill-injector-plugin — auto-load configured external skills into memory.
  *
- * Reads a `skill-injector` settings section whose `skillPaths` names the
+ * Reads the `skillPaths` config field, which names the
  * directories whose skills should be available. It does two things:
  *
  *  1. Registers the discovered skills as a standard `ctx.skills` provider, so
@@ -37,18 +37,17 @@ export interface Config {
     enabled?: boolean;
     /** Upper byte budget for the auto-loaded memory message. */
     maxBytes?: number;
-}
-export declare const Config: Schema<Schemastery.ObjectS<{
-    enabled: Schema<boolean, boolean>;
-    maxBytes: Schema<number, number>;
-}>, Schemastery.ObjectT<{
-    enabled: Schema<boolean, boolean>;
-    maxBytes: Schema<number, number>;
-}>>;
-/** Values stored in the `skill-injector` settings namespace. */
-export interface SkillInjectorSettings {
     /** Directories whose skills should be discovered and injected. */
-    skillPaths: string[];
+    skillPaths?: string[];
 }
+export declare const Config: Schema<Schemastery.ObjectS<NoInfer<{
+    enabled: Schema<boolean, boolean, "defined">;
+    maxBytes: Schema<number, number, "defined">;
+    skillPaths: Schema<string[], string[], "defined">;
+}>>, Schemastery.ObjectT<NoInfer<{
+    enabled: Schema<boolean, boolean, "defined">;
+    maxBytes: Schema<number, number, "defined">;
+    skillPaths: Schema<string[], string[], "defined">;
+}>>, "plain">;
 /** Register lifecycle, provider, and per-session injection behavior. */
 export declare function apply(ctx: Context, config: Config): void;
