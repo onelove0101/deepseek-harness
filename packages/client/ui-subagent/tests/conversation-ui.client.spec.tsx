@@ -435,7 +435,7 @@ describe('SubagentHeaderLineage', () => {
     const input = props(catalog({ entries: [{ id: CHILD, mode: 'continuable', label: 'worker', activity: 'inactive' }] }))
     const initial = input.useSessions(state => state)
     const statuses: SessionStatusSnapshot = new Map([[CHILD, {
-      running: true, completionUnread: false, pendingInteraction: undefined,
+      running: true, completionUnread: false, completionError: false, pendingInteraction: undefined,
     }]])
     render(<HeaderCatalog {...input}
       useSessions={select => select({ ...initial, ids: [] })}

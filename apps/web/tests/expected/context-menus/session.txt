@@ -3,3 +3,4 @@ Rename
 Fork session
 Copy Session ID
 Archive session
+Remove session

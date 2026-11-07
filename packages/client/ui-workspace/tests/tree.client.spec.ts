@@ -103,7 +103,7 @@ const noAttention: SessionStatusSnapshot = new Map()
 const status = (
   pendingInteraction: SessionPendingInteraction | undefined,
   overrides: Partial<SessionStatus> = {},
-): SessionStatus => ({ running: undefined, pendingInteraction, completionUnread: false, ...overrides })
+): SessionStatus => ({ running: undefined, pendingInteraction, completionUnread: false, completionError: false, ...overrides })
 const archived = (...ids: string[]): readonly SessionId[] => ids.map(sid)
 const rowState = (options: {
   pinned?: readonly string[]
@@ -381,6 +381,36 @@ describe('deriveGroups', () => {
       statuses, { items: [], hasMore: false }, 10,
     )
     expect(search.items[0]?.completed).toBe(true)
+  })
+
+  it('projects unread errors into session and search rows', () => {
+    const failed = summary('failed', 1)
+    const sessions = list(failed)
+    const statuses: SessionStatusSnapshot = new Map([[failed.id, status(undefined, {
+      completionUnread: true, completionError: true,
+    })]])
+    const groups = deriveGroups(sessions, [workspace('first', ['failed'])], noRows, statuses, view(['first']))
+    expect(groups[0]?.sessions[0]).toMatchObject({ completed: true, completionError: true })
+    expect(groups[0]?.attention).toBe('error')
+    expect(deriveSearchResults(sessions, [workspace('first', ['failed'])], 'failed', noArchive, 'default',
+      statuses, { items: [], hasMore: false }, 10).items[0]).toMatchObject({ completed: true, completionError: true })
+  })
+
+  it('aggregates collapsed workspace attention by priority and excludes archives', () => {
+    const sessions = list(summary('waiting', 3), summary('failed', 2), summary('done', 1))
+    const pending = { key: 'question:1', kind: 'question', sessionId: sid('waiting') } as SessionPendingInteraction
+    const statuses: SessionStatusSnapshot = new Map([
+      [sid('waiting'), status(pending, { completionUnread: true, completionError: true })],
+      [sid('failed'), status(undefined, { completionUnread: true, completionError: true })],
+      [sid('done'), status(undefined, { completionUnread: true })],
+    ])
+    const workspaces = [workspace('first', ['waiting', 'failed', 'done'])]
+    const derive = (archivedIds: string[]) => deriveGroups(sessions, workspaces,
+      rowState({ archived: archivedIds, archivedFilter: 'show' }), statuses, view())[0]!
+    expect(derive([])).toMatchObject({ expanded: false, sessions: [], attention: 'pending' })
+    expect(derive(['waiting']).attention).toBe('error')
+    expect(derive(['waiting', 'failed']).attention).toBe('done')
+    expect(derive(['waiting', 'failed', 'done']).attention).toBeUndefined()
   })
 
   it('hides subagent-origin sessions and reads direct running counts from catalogs', () => {

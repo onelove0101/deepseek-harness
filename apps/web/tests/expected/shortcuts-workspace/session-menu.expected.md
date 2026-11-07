@@ -7,3 +7,4 @@
   - menuitem "Open in"
   - separator
   - menuitem "Archive session"
+  - menuitem "Remove session"

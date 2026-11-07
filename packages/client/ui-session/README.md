@@ -14,12 +14,18 @@ Running status comes from Host list baselines or status events. Subagent catalog
 
 ## Table of Contents
 
+- [Completion reminders](#completion-reminders)
 - [Access Hooks](#access-hooks)
 - [Model Experience](#model-experience)
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
 - [Dev Note](#dev-note)
 
 -----
+
+<a id="completion-reminders"></a>
+## Completion reminders
+
+`completionError` marks an unread stop when a runtime error was observed during that running interval, including for unmaterialized Sessions. A false value does not establish success: standalone activation errors, errors without an observed running state, and missed events cannot be attributed to a completed interval. Starting another run or acknowledging the reminder clears both completion flags.
 
 <a id="access-hooks"></a>
 ## Access Hooks

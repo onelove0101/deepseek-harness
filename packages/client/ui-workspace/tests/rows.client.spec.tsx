@@ -355,9 +355,43 @@ describe('workspace browser rows', () => {
     render(<SearchResultItem result={result} currentId={undefined}
       onOpen={vi.fn()} onUnarchive={vi.fn()} useSessionAccess={allowAllAccess.useSessionAccess} t={t} />)
     const row = screen.getByRole('treeitem')
-    expect(row.querySelector('[data-state="warning"]')).toBeTruthy()
+    const icon = row.querySelector('[data-icon="dsw-icon-question-outline-regular"]')
+    expect(icon?.getAttribute('aria-hidden')).toBe('true')
+    expect(row.querySelector('[data-state="warning"]')).toBeNull()
     expect(row.querySelector('[data-state="ongoing"]')).toBeNull()
     expect(screen.getByText(label)).toBeTruthy()
+  })
+
+  it.each([
+    ['failed completion', { completed: true, completionError: true }, 'error', 'Run failed'],
+    ['unread stop without an observed error', { completed: true }, 'done', 'Completed'],
+    ['running before failure', { running: true, completed: true, completionError: true }, 'ongoing', 'Running'],
+    ['subagent before failure', { runningSubagentCount: 1, completed: true, completionError: true }, 'ongoing', '1 subagent running'],
+  ] as const)('renders %s consistently in session and search rows', (_name, overrides, state, label) => {
+    const node: SessionNode = {
+      id: sid('status'), title: 'Status', blank: false, running: false, runningSubagentCount: 0,
+      updatedAt: 0, pinned: false, archived: false, ...overrides,
+    }
+    const session = render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={vi.fn()} t={tEn} />)
+    expect(screen.getByRole('treeitem').querySelector(`[data-state="${state}"]`)).toBeTruthy()
+    expect(screen.getByText(label)).toBeTruthy()
+    session.unmount()
+    render(<SearchResultItem result={{ ...node, workspace: 'Project' }} currentId={undefined}
+      onOpen={vi.fn()} onUnarchive={vi.fn()} useSessionAccess={allowAllAccess.useSessionAccess} t={tEn} />)
+    expect(screen.getByRole('treeitem').querySelector(`[data-state="${state}"]`)).toBeTruthy()
+    expect(screen.getByText(label)).toBeTruthy()
+  })
+
+  it('keeps pending archived search results free of status markers', () => {
+    const result: SearchResultNode = {
+      id: sid('archived'), title: 'Archived', workspace: 'Project', archived: true,
+      pendingInteraction: 'question', running: true, runningSubagentCount: 0, completed: true, completionError: true,
+    }
+    render(<SearchResultItem result={result} currentId={undefined} onOpen={vi.fn()} onUnarchive={vi.fn()}
+      useSessionAccess={allowAllAccess.useSessionAccess} t={tEn} />)
+    const row = screen.getByRole('treeitem')
+    expect(row.querySelector('[data-state]')).toBeNull()
+    expect(row.querySelector('[data-icon="dsw-icon-question-outline-regular"]')).toBeNull()
   })
 
   it('renders an active Workspace and keeps its create action separate from toggling', () => {
@@ -682,7 +716,7 @@ describe('workspace browser rows', () => {
     }
     render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={vi.fn()} t={t} />)
     const row = screen.getByRole('treeitem')
-    expect(row.querySelector('[data-state="warning"]')).not.toBeNull()
+    expect(row.querySelector('[data-icon="dsw-icon-question-outline-regular"]')).not.toBeNull()
     expect(row.querySelector('[data-state="ongoing"]')).toBeNull()
     expect(screen.getByText('等待回答')).toBeTruthy()
     expect(screen.getByText('1 个子智能体运行中')).toBeTruthy()
@@ -1162,7 +1196,7 @@ describe('workspace browser rows', () => {
     ['approval', '等待审批', '待审批'],
     ['plan-review', '计划待审', '计划待审'],
     ['question', '等待回答', '待回答'],
-  ] as const)('shows %s as warning and replaces the row time', (pendingInteraction, label, compactLabel) => {
+  ] as const)('shows %s with a question icon and replaces the row time', (pendingInteraction, label, compactLabel) => {
     vi.useFakeTimers()
     try {
       const node: SessionNode = {
@@ -1172,7 +1206,9 @@ describe('workspace browser rows', () => {
       const view = render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={vi.fn()} t={t} />)
       const row = screen.getByRole('treeitem')
       const title = screen.getByText('Needs input')
-      expect(row.querySelector('[data-state="warning"]')).toBeTruthy()
+      const icon = row.querySelector('[data-icon="dsw-icon-question-outline-regular"]')
+      expect(icon?.getAttribute('aria-hidden')).toBe('true')
+      expect(row.querySelector('[data-state="warning"]')).toBeNull()
       expect(row.querySelector('[data-state="ongoing"]')).toBeNull()
       expect(row.textContent).toContain(label)
       expect(title.nextElementSibling?.textContent).toBe(compactLabel)
@@ -1183,13 +1219,13 @@ describe('workspace browser rows', () => {
 
       view.rerender(<SessionNodeItem node={{ ...node, running: false }} currentId={undefined} now={0}
         onOpen={vi.fn()} t={t} />)
-      expect(screen.getByRole('treeitem').querySelector('[data-state="warning"]')).toBeTruthy()
+      expect(screen.getByRole('treeitem').querySelector('[data-icon="dsw-icon-question-outline-regular"]')).toBeTruthy()
 
       fireEvent.pointerEnter(screen.getByRole('treeitem').parentElement as HTMLElement)
       act(() => { vi.advanceTimersByTime(800) })
       expect(screen.getAllByText(label).length).toBeGreaterThanOrEqual(2)
       expect(screen.getByText('刚刚')).toBeTruthy()
-      expect(document.querySelectorAll('[data-state="warning"]')).toHaveLength(2)
+      expect(document.querySelectorAll('[data-state="warning"]')).toHaveLength(1)
     } finally {
       vi.useRealTimers()
     }
@@ -1515,7 +1551,6 @@ describe('session row decoration seats', () => {
   it.each<[string, SessionNode, string]>([
     ['an unviewed completion (new message)', { ...idle, completed: true }, 'done'],
     ['live activity', { ...idle, running: true }, 'ongoing'],
-    ['a pending approval', { ...idle, pendingInteraction: 'approval' as const }, 'warning'],
     ['a running subagent', { ...idle, runningSubagentCount: 2 }, 'ongoing'],
   ])('replaces the leading seat with the %s dot', (_label, node, state) => {
     const renderSlot = seatSpy()
@@ -1524,6 +1559,15 @@ describe('session row decoration seats', () => {
     // The dot occupies the same leading cell the idle row gave the seat.
     const dotCell = row.firstElementChild
     expect(dotCell?.querySelector(`[data-state="${state}"]`)).toBeTruthy()
+    expect(row.querySelector('[data-seat="sidebar.session.row.leading"]')).toBeNull()
+    expect(renderSlot).not.toHaveBeenCalledWith('sidebar.session.row.leading', expect.anything())
+  })
+
+  it('replaces the leading seat with the pending question icon', () => {
+    const renderSlot = seatSpy()
+    renderRow({ ...idle, pendingInteraction: 'approval' }, renderSlot)
+    const row = screen.getByRole('treeitem')
+    expect(row.firstElementChild?.querySelector('[data-icon="dsw-icon-question-outline-regular"]')).toBeTruthy()
     expect(row.querySelector('[data-seat="sidebar.session.row.leading"]')).toBeNull()
     expect(renderSlot).not.toHaveBeenCalledWith('sidebar.session.row.leading', expect.anything())
   })
@@ -1539,6 +1583,7 @@ describe('session row decoration seats', () => {
     // The archived rule: the grayed row carries the archived look and its live
     // status stays on the hover card alone, so the cell holds neither marker.
     expect(row.querySelector('[data-state]')).toBeNull()
+    expect(row.querySelector('[data-icon="dsw-icon-question-outline-regular"]')).toBeNull()
     expect(row.querySelector('[data-seat="sidebar.session.row.leading"]')).toBeNull()
     expect(renderSlot).not.toHaveBeenCalledWith('sidebar.session.row.leading', expect.anything())
   })

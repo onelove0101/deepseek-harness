@@ -909,7 +909,7 @@ describe('WorkspaceBrowser', () => {
     })
     const status = (id: string, value: Partial<SessionStatus>) =>
       hook<SessionStatusSnapshot>(new Map([[sid(id), {
-        running: false, pendingInteraction: undefined, completionUnread: false, ...value,
+        running: false, pendingInteraction: undefined, completionUnread: false, completionError: false, ...value,
       }]]))
     const expectVisible = (count: number) => {
       expect(screen.getAllByRole('treeitem').map(row => within(row).getByText(/^(alpha|session-\d+)$/u).textContent))
@@ -946,7 +946,7 @@ describe('WorkspaceBrowser', () => {
     })
     fireEvent.click(screen.getByText('alpha'))
     const running = (value: boolean) => hook<SessionStatusSnapshot>(new Map([[sid('session-9'), {
-      running: value, pendingInteraction: undefined, completionUnread: false,
+      running: value, pendingInteraction: undefined, completionUnread: false, completionError: false,
     }]]))
     rerender(b, { useSessionStatus: running(true) })
     rerender(b, { useSessionStatus: running(false) })
@@ -969,15 +969,15 @@ describe('WorkspaceBrowser', () => {
     })
     fireEvent.click(screen.getByText('alpha'))
     const running = (...ids: string[]) => hook<SessionStatusSnapshot>(new Map(ids.map(id => [sid(id), {
-      running: true, pendingInteraction: undefined, completionUnread: false,
+      running: true, pendingInteraction: undefined, completionUnread: false, completionError: false,
     }])))
     rerender(b, {
       useSessions: hook(sessionState(items, { main: sid('session-53') })),
       useSessionStatus: hook<SessionStatusSnapshot>(new Map([
-        [sid('session-55'), { running: true, pendingInteraction: undefined, completionUnread: false }],
-        [sid('session-56'), { running: false, pendingInteraction: undefined, completionUnread: true }],
+        [sid('session-55'), { running: true, pendingInteraction: undefined, completionUnread: false, completionError: false }],
+        [sid('session-56'), { running: false, pendingInteraction: undefined, completionUnread: true, completionError: false }],
         [sid('session-57'), {
-          running: false, completionUnread: false,
+          running: false, completionUnread: false, completionError: false,
           pendingInteraction: { key: 'question:1', kind: 'question', sessionId: sid('session-57') } as SessionPendingInteraction,
         }],
       ])),
@@ -2683,6 +2683,38 @@ describe('WorkspaceBrowser', () => {
   })
 
   describe('Workspace Group organization', () => {
+    it('aggregates attention through collapsed group and folder headers, excluding archives', () => {
+      const statuses: SessionStatusSnapshot = new Map([
+        [sid('pending'), {
+          running: false, completionUnread: false, completionError: false,
+          pendingInteraction: { key: 'question:1', kind: 'question', sessionId: sid('pending') } as SessionPendingInteraction,
+        }],
+        [sid('failed'), { running: false, pendingInteraction: undefined, completionUnread: true, completionError: true }],
+      ])
+      const b = mount({
+        useSessions: hook(sessionState([summary('pending', 2), summary('failed', 1)])),
+        useSessionStatus: hook(statuses),
+        useWorkspaces: hook(workspaceState([
+          workspace('alpha', ['pending', 'failed'], 'Alpha', [folder('f', 'Folder', ['pending'])]),
+        ], [], [], { topLevelWorkspaceIds: [], groups: [group('g', 'Research', ['alpha'])] })),
+      })
+      const row = (title: string) => screen.getByText(title).closest('[role="treeitem"]')!
+      const attention = (title: string) => row(title).querySelector('[data-attention]')?.getAttribute('data-attention')
+      expect(attention('Research')).toBe('pending')
+      expect(row('Research').getAttribute('aria-label')).toContain(zh['status.attention.pending'])
+      fireEvent.click(screen.getByText('Research'))
+      expect(attention('Alpha')).toBe('pending')
+      browserExpand(b, wid('alpha'))
+      expect(attention('Folder')).toBe('pending')
+      expect(row('Folder').getAttribute('aria-label')).toContain(zh['status.attention.pending'])
+      expect(screen.queryByText('pending')).toBeNull()
+      rerender(b, { useWorkspaces: hook(workspaceState([
+        workspace('alpha', ['pending', 'failed'], 'Alpha', [folder('f', 'Folder', ['pending'])]),
+      ], [sid('pending')], [], { topLevelWorkspaceIds: [], groups: [group('g', 'Research', ['alpha'])] })) })
+      expect(attention('Research')).toBe('error')
+      expect(attention('Alpha')).toBe('error')
+      expect(attention('Folder')).toBeUndefined()
+    })
     it('creates a Group from the view-options dialog, with trimmed input and duplicate blocking', async () => {
       const createGroup = vi.fn(async () => {})
       mount({
@@ -3106,6 +3138,30 @@ describe('Workspace tree grouping', () => {
   const child = { ...workspace('child', ['child-session'], 'Child'), path: '/projects/team/child' }
   const section = (title: string) => screen.getByText(title).closest<HTMLElement>('[class*="groupSection"]')!
 
+  it('propagates descendant attention through collapsed nested workspaces', () => {
+    const statuses: SessionStatusSnapshot = new Map([
+      [sid('root-session'), { running: false, pendingInteraction: undefined, completionUnread: true, completionError: true }],
+      [sid('child-session'), {
+        running: false, completionUnread: false, completionError: false,
+        pendingInteraction: { key: 'question:1', kind: 'question', sessionId: sid('child-session') } as SessionPendingInteraction,
+      }],
+    ])
+    const b = mount({
+      useSessions: hook(sessionState([summary('root-session', 1), summary('child-session', 2)])),
+      useSessionStatus: hook(statuses),
+      useWorkspaces: hook(workspaceState([root, team, child])),
+    })
+    const attention = (title: string) => screen.getByText(title).closest('[role="treeitem"]')!
+      .querySelector('[data-attention]')?.getAttribute('data-attention')
+    expect(attention('Projects')).toBe('pending')
+    expect(attention('Team')).toBe('pending')
+    fireEvent.click(screen.getByText('Projects'))
+    expect(screen.queryByText('Child')).toBeNull()
+    expect(attention('Projects')).toBe('pending')
+    rerender(b, { useWorkspaces: hook(workspaceState([root, team, child], [sid('child-session')])) })
+    expect(attention('Projects')).toBe('error')
+  })
+
   it('adopts a parent directory and preserves its existing draft without confirmation', async () => {
     const b = mount({
       useWorkspaces: hook(workspaceState([child])),
@@ -3161,7 +3217,7 @@ describe('Workspace tree grouping', () => {
     fireEvent.click(screen.getByText('Child'))
     fireEvent.click(screen.getByText('Projects'))
     const status = (running: boolean) => hook<SessionStatusSnapshot>(new Map([[sid('child-8'), {
-      running, pendingInteraction: undefined, completionUnread: false,
+      running, pendingInteraction: undefined, completionUnread: false, completionError: false,
     }]]))
     rerender(b, { useSessionStatus: status(true) })
     rerender(b, { useSessionStatus: status(false) })

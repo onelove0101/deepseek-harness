@@ -1,0 +1,7 @@
+- treeitem "Failure group (1), Contains an unread failed session" [expanded]: Failure group
+- group:
+  - treeitem "workspace Contains an unread failed session" [expanded]
+  - group:
+    - treeitem "Failure folder (1), Contains an unread failed session" [expanded]: Failure folder
+    - treeitem "Run failed Use the ask_user_question tool to now"
+  - treeitem "New Session" [selected]

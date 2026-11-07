@@ -1,0 +1,6 @@
+- treeitem "Attention group (1), Contains a session awaiting confirmation" [expanded]: Attention group
+- group:
+  - treeitem "workspace Contains a session awaiting confirmation" [expanded]
+  - group:
+    - treeitem "Attention folder (1), Contains a session awaiting confirmation" [expanded]: Attention folder
+    - treeitem "Waiting for answer Use the ask_user_question tool to" [selected]

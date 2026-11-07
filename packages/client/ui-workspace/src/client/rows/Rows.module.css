@@ -196,6 +196,18 @@
   color: var(--dsw-alias-state-business-primary);
 }
 
+.folder[data-attention='pending'],
+.pendingIcon {
+  color: var(--dsw-alias-state-warn-primary);
+}
+
+.folder[data-attention='error'] {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.folder[data-attention='done'] {
+  color: var(--dsw-alias-state-success-primary);
+}
 
 /* Project leading slot: folder by default, expand arrow on row hover. */
 .projectRow .chevron { display: none; }

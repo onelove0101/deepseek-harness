@@ -34,9 +34,9 @@ import { workspaceDisplayTitle } from '@deepseek-ai/dsh-api-workspace-controller
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import type { WorkspaceActionRequest, WorkspaceBrowserProps, WorkspaceEntityRequest } from '../contract/slots.ts'
-import type { ArchivedFilter, GroupNode, SessionNode, SessionOrderBy, SessionRowState } from '../tree.ts'
+import type { ArchivedFilter, AttentionState, GroupNode, SessionNode, SessionOrderBy, SessionRowState } from '../tree.ts'
 import {
-  deriveFlat, deriveGroups, deriveSearchResults, orderByRecency, owningGroupKey, owningParentFolder,
+  deriveFlat, deriveGroups, deriveSearchResults, highestAttention, orderByRecency, owningGroupKey, owningParentFolder, sessionAttention,
   folderExpansionKey, folderMembership, pinCurrentBlank, reconcileManualOrder, sessionMemberIds, UNGROUPED_KEY, ungroupedExpansionKey,
   workspaceExpansionKey, workspaceGroupExpansionKey,
 } from '../tree.ts'
@@ -452,6 +452,17 @@ function SessionTree({
     }
     return keys
   }, [groups, parents])
+  const attentionAncestors = useMemo(() => {
+    const states = new Map<string, AttentionState>()
+    for (const group of groups) {
+      if (group.attention === undefined) { continue }
+      for (let key = parents.get(group.key); key !== undefined; key = parents.get(key)) {
+        const attention = highestAttention([states.get(key), group.attention])
+        if (attention !== undefined) { states.set(key, attention) }
+      }
+    }
+    return states
+  }, [groups, parents])
   useEffect(() => {
     for (let key = revealGroup; key !== undefined; key = parents.get(key)) {
       const expansionKey = expansionKeyOf(key)
@@ -686,6 +697,7 @@ function SessionTree({
               workspaceId={workspaceView.workspaceId} folderId={folder.folderId} title={folder.title}
               expanded={folderExpanded} containsCurrent={current !== undefined && members.some(node => node.id === current)}
               running={members.some(node => node.running || node.runningSubagentCount > 0)}
+              attention={highestAttention(members.map(sessionAttention))}
               sessionCount={members.length}
               onToggle={() => { setGroupExpanded(folderKey, !folderExpanded) }}
               renderFactorySlot={renderFactorySlot} useContextMenu={useContextMenu} useContextMenuTarget={useContextMenuTarget}
@@ -775,6 +787,7 @@ function SessionTree({
           useWorkspaceAccess={useWorkspaceAccess}
           containsCurrentDescendant={currentAncestors.has(group.key)}
           runningDescendant={runningAncestors.has(group.key)}
+          attentionDescendant={attentionAncestors.get(group.key)}
           home={home}
           t={t}
           onToggle={() => {
@@ -869,6 +882,7 @@ function SessionTree({
             containsCurrent={current !== undefined && members.some(member =>
               workspaces.find(workspace => workspace.workspaceId === member.workspaceId)?.sessionIds.includes(current) === true)}
             running={members.some(member => member.running || runningAncestors.has(member.key))}
+            attention={highestAttention(members.map(member => highestAttention([member.attention, attentionAncestors.get(member.key)])))}
             workspaceCount={members.length}
             onToggle={() => { setGroupExpanded(workspaceGroupExpansionKey(workspaceGroup.groupId), !expanded) }}
             renderFactorySlot={renderFactorySlot} useContextMenu={useContextMenu} useContextMenuTarget={useContextMenuTarget}

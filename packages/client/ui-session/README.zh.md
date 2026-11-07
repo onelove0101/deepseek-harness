@@ -14,12 +14,18 @@ kind: "package-reference"
 
 ## 目录
 
+- [完成提醒](#completion-reminders)
 - [访问 Hook](#access-hooks)
 - [模型体验](#model-experience)
 - [已知限制与暂缓事项](#known-limitations-and-deferred-work)
 - [开发备注](#dev-note)
 
 -----
+
+<a id="completion-reminders"></a>
+## 完成提醒
+
+若在运行期间观察到运行时错误，`completionError` 会标记未读的停止提醒，包括尚未物化的 Session。该值为 false 不代表成功：独立的激活错误、未观察到运行状态时的错误以及遗漏的事件无法归属于已完成的运行区间。开始新运行或确认提醒会清除两个完成标记。
 
 <a id="access-hooks"></a>
 ## 访问 Hook

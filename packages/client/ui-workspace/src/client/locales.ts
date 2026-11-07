@@ -110,6 +110,11 @@ export const zh = {
   'archive.confirm.listSeparator': '、',
   'archive.confirm.action': '停止并归档',
   'archive.confirm.pending': '正在停止并归档…',
+  'menu.removeSession': '删除会话',
+  'remove.session': '永久删除会话',
+  'remove.session.desc': '将永久删除“{title}”及其全部记录，此操作无法撤销。',
+  'remove.session.action': '删除',
+  'remove.session.pending': '正在删除会话…',
   'toast.archivedUndo': '撤销',
   'toast.archivedOr': '或',
   'toast.archivedFilter': '筛选已归档会话',
@@ -139,6 +144,10 @@ export const zh = {
   'status.compact.planReview': '计划待审',
   'status.compact.answer': '待回答',
   'status.completed': '已完成',
+  'status.failed': '运行失败',
+  'status.attention.pending': '包含等待确认的会话',
+  'status.attention.error': '包含未读失败的会话',
+  'status.attention.done': '包含未读完成的会话',
   'hover.created': '创建于 {time}',
   'hover.copied': '已复制',
   'date.ymd': '{y}年{m}月{d}日',
@@ -260,6 +269,11 @@ export const en = {
   'archive.confirm.listSeparator': ', ',
   'archive.confirm.action': 'Stop and archive',
   'archive.confirm.pending': 'Stopping and archiving…',
+  'menu.removeSession': 'Remove session',
+  'remove.session': 'Remove session',
+  'remove.session.desc': 'This permanently deletes “{title}” and its stored log. This cannot be undone.',
+  'remove.session.action': 'Remove',
+  'remove.session.pending': 'Removing session…',
   'toast.archivedUndo': 'undo',
   'toast.archivedOr': ' or ',
   'toast.archivedFilter': 'filter archived sessions',
@@ -289,6 +303,10 @@ export const en = {
   'status.compact.planReview': 'Plan review',
   'status.compact.answer': 'Answer',
   'status.completed': 'Completed',
+  'status.failed': 'Run failed',
+  'status.attention.pending': 'Contains a session awaiting confirmation',
+  'status.attention.error': 'Contains an unread failed session',
+  'status.attention.done': 'Contains an unread completed session',
   'hover.created': 'Created {time}',
   'hover.copied': 'Copied',
   'date.ymd': '{y}-{m}-{d}',
@@ -301,8 +319,16 @@ export const en = {
   'time.ago': '{t} ago',
 } satisfies Record<WorkspaceKey, string>
 
+const attentionEnglish = {
+  'status.failed': en['status.failed'],
+  'status.attention.pending': en['status.attention.pending'],
+  'status.attention.error': en['status.attention.error'],
+  'status.attention.done': en['status.attention.done'],
+}
+
 /** Japanese copy, checked against the English keys. */
 export const ja = {
+  ...attentionEnglish,
   'defaultWorkspace.failed': 'デフォルトのワークスペースを作成できません。ワークスペースを選択してフォルダーを選んでください。',
   'draft.workspaceRequired': '先にワークスペースを選択してください。',
   'draft.initializationFailed': '下書きを埋め込めませんでした。しばらくしてからもう一度お試しください。',
@@ -407,6 +433,11 @@ export const ja = {
   'archive.confirm.listSeparator': '、',
   'archive.confirm.action': '停止してアーカイブ',
   'archive.confirm.pending': '停止してアーカイブ中…',
+  'menu.removeSession': 'Remove session',
+  'remove.session': 'Remove session',
+  'remove.session.desc': 'This permanently deletes “{title}” and its stored log. This cannot be undone.',
+  'remove.session.action': 'Remove',
+  'remove.session.pending': 'Removing session…',
   'toast.archivedUndo': '元に戻す',
   'toast.archivedOr': ' または ',
   'toast.archivedFilter': 'アーカイブ済みセッションを絞り込む',
@@ -450,6 +481,10 @@ export const ja = {
 
 /** Spanish dictionary, checked against the English keys. */
 export const es = {
+  'status.failed': 'Ejecución fallida',
+  'status.attention.pending': 'Contiene una sesión pendiente de confirmación',
+  'status.attention.error': 'Contiene una sesión fallida sin leer',
+  'status.attention.done': 'Contiene una sesión completada sin leer',
   'defaultWorkspace.failed': 'No se puede crear el espacio de trabajo predeterminado. Utilice Elegir espacio de trabajo para seleccionar una carpeta.',
   'draft.workspaceRequired': 'Elija un espacio de trabajo primero.',
   'draft.initializationFailed': 'No se pudo completar el borrador. Inténtelo de nuevo en breve.',
@@ -554,6 +589,11 @@ export const es = {
   'archive.confirm.listSeparator': ', ',
   'archive.confirm.action': 'Detener y archivar',
   'archive.confirm.pending': 'Deteniendo y archivando…',
+  'menu.removeSession': 'Eliminar sesión',
+  'remove.session': 'Eliminar sesión',
+  'remove.session.desc': 'Esto elimina permanentemente «{title}» y su registro. No se puede deshacer.',
+  'remove.session.action': 'Eliminar',
+  'remove.session.pending': 'Eliminando sesión…',
   'toast.archivedUndo': 'deshacer',
   'toast.archivedOr': ' o ',
   'toast.archivedFilter': 'filtrar sesiones archivadas',
@@ -597,6 +637,10 @@ export const es = {
 
 /** French dictionary, checked against the English keys. */
 export const fr = {
+  'status.failed': 'Exécution échouée',
+  'status.attention.pending': 'Contient une session en attente de confirmation',
+  'status.attention.error': 'Contient une session échouée non lue',
+  'status.attention.done': 'Contient une session terminée non lue',
   'defaultWorkspace.failed': 'Impossible de créer un espace de travail par défaut. Utilisez Choisir un espace de travail pour sélectionner un dossier.',
   'draft.workspaceRequired': "Choisissez d'abord un espace de travail.",
   'draft.initializationFailed': 'Impossible de remplir le projet. Veuillez réessayer sous peu.',
@@ -701,6 +745,11 @@ export const fr = {
   'archive.confirm.listSeparator': ', ',
   'archive.confirm.action': 'Arrêter et archiver',
   'archive.confirm.pending': 'Arrêt et archivage…',
+  'menu.removeSession': 'Supprimer la session',
+  'remove.session': 'Supprimer la session',
+  'remove.session.desc': 'Cela supprime définitivement « {title} » et son journal. Action irréversible.',
+  'remove.session.action': 'Supprimer',
+  'remove.session.pending': 'Suppression de la session…',
   'toast.archivedUndo': 'annuler',
   'toast.archivedOr': ' ou ',
   'toast.archivedFilter': 'filtrer les sessions archivées',
@@ -744,6 +793,10 @@ export const fr = {
 
 /** German dictionary, checked against the English keys. */
 export const de = {
+  'status.failed': 'Ausführung fehlgeschlagen',
+  'status.attention.pending': 'Enthält eine Sitzung, die auf Bestätigung wartet',
+  'status.attention.error': 'Enthält eine ungelesene fehlgeschlagene Sitzung',
+  'status.attention.done': 'Enthält eine ungelesene abgeschlossene Sitzung',
   'defaultWorkspace.failed': 'Der Standardarbeitsbereich kann nicht erstellt werden. Verwenden Sie „Arbeitsbereich auswählen“, um einen Ordner auszuwählen.',
   'draft.workspaceRequired': 'Wählen Sie zunächst einen Arbeitsbereich.',
   'draft.initializationFailed': 'Der Entwurf konnte nicht ausgefüllt werden. Bitte versuchen Sie es in Kürze noch einmal.',
@@ -848,6 +901,11 @@ export const de = {
   'archive.confirm.listSeparator': ', ',
   'archive.confirm.action': 'Stoppen und archivieren',
   'archive.confirm.pending': 'Stoppen und archivieren…',
+  'menu.removeSession': 'Sitzung entfernen',
+  'remove.session': 'Sitzung entfernen',
+  'remove.session.desc': 'Dadurch werden „{title}“ und das zugehörige Protokoll endgültig gelöscht. Dies kann nicht rückgängig gemacht werden.',
+  'remove.session.action': 'Entfernen',
+  'remove.session.pending': 'Sitzung wird entfernt…',
   'toast.archivedUndo': 'rückgängig machen',
   'toast.archivedOr': ' oder ',
   'toast.archivedFilter': 'Archivierte Sitzungen filtern',
@@ -891,6 +949,10 @@ export const de = {
 
 /** Russian dictionary, checked against the English keys. */
 export const ru = {
+  'status.failed': 'Выполнение завершилось с ошибкой',
+  'status.attention.pending': 'Содержит сеанс, ожидающий подтверждения',
+  'status.attention.error': 'Содержит непрочитанный сеанс с ошибкой',
+  'status.attention.done': 'Содержит непрочитанный завершённый сеанс',
   'defaultWorkspace.failed': 'Невозможно создать рабочую область по умолчанию. Используйте «Выбрать рабочее пространство», чтобы выбрать папку.',
   'draft.workspaceRequired': 'Сначала выберите рабочее место.',
   'draft.initializationFailed': 'Не удалось заполнить черновик. Пожалуйста, повторите попытку в ближайшее время.',
@@ -995,6 +1057,11 @@ export const ru = {
   'archive.confirm.listSeparator': ', ',
   'archive.confirm.action': 'Остановить и заархивировать',
   'archive.confirm.pending': 'Остановка и архивирование…',
+  'menu.removeSession': 'Удалить сеанс',
+  'remove.session': 'Удалить сеанс',
+  'remove.session.desc': 'Сеанс «{title}» и его журнал будут удалены безвозвратно.',
+  'remove.session.action': 'Удалить',
+  'remove.session.pending': 'Удаление сеанса…',
   'toast.archivedUndo': 'отменить',
   'toast.archivedOr': ' или ',
   'toast.archivedFilter': 'фильтровать архивированные сеансы',
@@ -1038,6 +1105,10 @@ export const ru = {
 
 /** Portuguese dictionary, checked against the English keys. */
 export const pt = {
+  'status.failed': 'Falha na execução',
+  'status.attention.pending': 'Contém uma sessão aguardando confirmação',
+  'status.attention.error': 'Contém uma sessão com falha não lida',
+  'status.attention.done': 'Contém uma sessão concluída não lida',
   'defaultWorkspace.failed': 'Não foi possível criar o espaço de trabalho padrão. Use Escolher espaço de trabalho para selecionar uma pasta.',
   'draft.workspaceRequired': 'Escolha um espaço de trabalho primeiro.',
   'draft.initializationFailed': 'Não foi possível preencher o rascunho. Por favor, tente novamente em breve.',
@@ -1142,6 +1213,11 @@ export const pt = {
   'archive.confirm.listSeparator': ', ',
   'archive.confirm.action': 'Pare e arquive',
   'archive.confirm.pending': 'Parando e arquivando…',
+  'menu.removeSession': 'Remover sessão',
+  'remove.session': 'Remover sessão',
+  'remove.session.desc': 'Isto exclui permanentemente “{title}” e seu registro. Não pode ser desfeito.',
+  'remove.session.action': 'Remover',
+  'remove.session.pending': 'Removendo sessão…',
   'toast.archivedUndo': 'desfazer',
   'toast.archivedOr': ' ou ',
   'toast.archivedFilter': 'filtrar sessões arquivadas',

@@ -28,6 +28,8 @@ const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/question-comp
 const FIXTURE = join(SNAPSHOT_DIR, 'session.v3.jsonl')
 const UI_EXPECTED = join(SNAPSHOT_DIR, 'ui.expected.md')
 const SIDEBAR_EXPECTED = join(SNAPSHOT_DIR, 'sidebar.expected.md')
+const ATTENTION_EXPECTED = join(SNAPSHOT_DIR, 'attention.expected.md')
+const ERROR_ATTENTION_EXPECTED = join(SNAPSHOT_DIR, 'error-attention.expected.md')
 const COMPOSED_EXPECTED = join(SNAPSHOT_DIR, 'composed.expected.md')
 // Final golden: the answered transcript — the question resolved into its tool
 // round trip and the final reply, the state the composer goldens cannot see.
@@ -370,7 +372,17 @@ describe('web e2e: resident question composer round trip', () => {
     expect(await page.locator('[data-question-reply]').count()).toBe(0)
 
     const selectedRow = page.locator('[role="treeitem"][aria-selected="true"]')
-    await expect.poll(() => selectedRow.locator('[data-state="warning"]').count(), { timeout: 10_000 }).toBe(1)
+    const pendingIcon = selectedRow.locator('svg[data-icon="dsw-icon-question-outline-regular"]')
+    await expect.poll(() => pendingIcon.count(), { timeout: 10_000 }).toBe(1)
+    expect(await pendingIcon.getAttribute('aria-hidden')).toBe('true')
+    expect(await selectedRow.locator('[data-state="warning"]').count()).toBe(0)
+    expect(await pendingIcon.evaluate((icon: SVGElement) => {
+      const actual = getComputedStyle(icon).color
+      icon.style.color = 'var(--dsw-alias-state-warn-primary)'
+      const warning = getComputedStyle(icon).color
+      icon.style.removeProperty('color')
+      return actual === warning
+    })).toBe(true)
     await expect.poll(() => selectedRow.getByText('Waiting for answer', { exact: true }).count(), { timeout: 10_000 }).toBe(1)
     await expect.poll(() => selectedRow.getByText('Answer', { exact: true }).count(), { timeout: 10_000 }).toBe(1)
     expect(await selectedRow.getByText('now', { exact: true }).count()).toBe(0)
@@ -388,6 +400,67 @@ describe('web e2e: resident question composer round trip', () => {
       await compareOrRefreshGolden(UI_EXPECTED, `${snapshot}\nChoice descriptions: ${JSON.stringify(descriptions)}`, MODE)
       const sidebar = await captureStableAria(page, '[role="treeitem"][aria-selected="true"]', scaffold.workspaceCwd)
       await compareOrRefreshGolden(SIDEBAR_EXPECTED, sidebar, MODE)
+
+      const workspace = await scaffold.ctx.workspaceRegistry.resolveByPath(join(scaffold.workspaceCwd, 'workspace'))
+      if (workspace === undefined) {
+        throw new Error('The connected Workspace was not registered')
+      }
+      const sessionId = workspace.sessionIds[0]
+      if (sessionId === undefined) {
+        throw new Error('The connected Workspace has no Session')
+      }
+      const group = await scaffold.ctx.workspaceRegistry.createGroup('Attention group')
+      await scaffold.ctx.workspaceRegistry.moveToGroup(workspace.id, group.id)
+      const folder = await workspace.createFolder('Attention folder')
+      await workspace.moveSessionToFolder(sessionId, folder.id)
+
+      const groupRow = page.locator(`[data-row-key="group:${group.id}"]`)
+      const workspaceRow = page.locator(`[data-row-key="workspace:${workspace.id}"]`)
+      const folderRow = page.locator(`[data-row-key="folder:${folder.id}"]`)
+      await groupRow.waitFor({ timeout: 10_000 })
+      if (await groupRow.getAttribute('aria-expanded') !== 'true') {
+        await groupRow.click()
+      }
+      await workspaceRow.waitFor({ timeout: 10_000 })
+      if (await workspaceRow.getAttribute('aria-expanded') !== 'true') {
+        await workspaceRow.click()
+      }
+      await folderRow.waitFor({ timeout: 10_000 })
+      for (const row of [groupRow, workspaceRow, folderRow]) {
+        const icon = row.locator('[data-attention="pending"]')
+        await expect.poll(() => icon.count(), { timeout: 10_000 }).toBe(1)
+        expect(await icon.evaluate((element: HTMLElement) => {
+          const actual = getComputedStyle(element).color
+          element.style.color = 'var(--dsw-alias-state-warn-primary)'
+          const warning = getComputedStyle(element).color
+          element.style.removeProperty('color')
+          return actual === warning
+        })).toBe(true)
+      }
+      expect(await groupRow.getAttribute('aria-label')).toContain('Contains a session awaiting confirmation')
+      expect(await folderRow.getAttribute('aria-label')).toContain('Contains a session awaiting confirmation')
+      expect(await workspaceRow.getByText('Contains a session awaiting confirmation', { exact: true }).count()).toBe(1)
+      if (await folderRow.getAttribute('aria-expanded') !== 'true') {
+        await folderRow.click()
+      }
+      await selectedRow.waitFor({ timeout: 10_000 })
+      const attention = await captureStableAria(page, `[data-row-key="group:${group.id}"] >> xpath=..`, scaffold.workspaceCwd)
+      await compareOrRefreshGolden(ATTENTION_EXPECTED, attention, MODE)
+      await folderRow.click()
+      expect(await folderRow.locator('[data-attention="pending"]').count()).toBe(1)
+      await workspaceRow.click()
+      expect(await workspaceRow.locator('[data-attention="pending"]').count()).toBe(1)
+      await groupRow.click()
+      expect(await groupRow.locator('[data-attention="pending"]').count()).toBe(1)
+
+      await workspace.deleteFolder(folder.id)
+      await scaffold.ctx.workspaceRegistry.deleteGroup(group.id)
+      const restoredWorkspace = page.locator(`[data-row-key="workspace:${workspace.id}"]`)
+      await restoredWorkspace.waitFor({ timeout: 10_000 })
+      if (await restoredWorkspace.getAttribute('aria-expanded') !== 'true') {
+        await restoredWorkspace.click()
+      }
+      await selectedRow.waitFor({ timeout: 10_000 })
     }
 
     // Squeezed card: the question and compact option rows share one scrollport,
@@ -545,7 +618,7 @@ describe('web e2e: resident question composer round trip', () => {
     await expect.poll(() => page.getByText('DONE', { exact: true }).count(), { timeout: 15_000 }).toBeGreaterThanOrEqual(1)
     // Composer gone; regular input restored.
     expect(await page.locator('[data-question-key]').count()).toBe(0)
-    expect(await selectedRow.locator('[data-state="warning"]').count()).toBe(0)
+    expect(await selectedRow.locator('svg[data-icon="dsw-icon-question-outline-regular"]').count()).toBe(0)
     await expect.poll(() => page.locator('[data-composer-input]').first().isEnabled(), { timeout: 10_000 }).toBe(true)
     const reply = page.locator('[data-question-reply]')
     await reply.waitFor({ state: 'visible', timeout: 15_000 })
@@ -596,6 +669,72 @@ describe('web e2e: resident question composer round trip', () => {
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])
   }, 200_000)
+
+  it.skipIf(MODE === 'record')('shows and acknowledges an unread failure through the host event bridge', async () => {
+    const sessionId = answeredSession
+    if (sessionId === undefined) {
+      throw new Error('The recorded Session did not complete')
+    }
+    const workspace = await scaffold.ctx.workspaceRegistry.resolveByPath(join(scaffold.workspaceCwd, 'workspace'))
+    if (workspace === undefined) {
+      throw new Error('The connected Workspace was not registered')
+    }
+    const group = await scaffold.ctx.workspaceRegistry.createGroup('Failure group')
+    await scaffold.ctx.workspaceRegistry.moveToGroup(workspace.id, group.id)
+    const folder = await workspace.createFolder('Failure folder')
+    await workspace.moveSessionToFolder(sessionId, folder.id)
+    const groupRow = page.locator(`[data-row-key="group:${group.id}"]`)
+    const workspaceRow = page.locator(`[data-row-key="workspace:${workspace.id}"]`)
+    const folderRow = page.locator(`[data-row-key="folder:${folder.id}"]`)
+    const failedRow = page.locator(`[data-row-key="session:${sessionId}"]`)
+    await groupRow.waitFor({ timeout: 10_000 })
+    if (await groupRow.getAttribute('aria-expanded') !== 'true') {
+      await groupRow.click()
+    }
+    await workspaceRow.waitFor({ timeout: 10_000 })
+    if (await workspaceRow.getAttribute('aria-expanded') !== 'true') {
+      await workspaceRow.click()
+    }
+    await folderRow.waitFor({ timeout: 10_000 })
+    if (await folderRow.getAttribute('aria-expanded') !== 'true') {
+      await folderRow.click()
+    }
+    await failedRow.waitFor({ timeout: 10_000 })
+
+    scaffold.ctx.emit('api-session/status', sessionId, true)
+    await expect.poll(() => failedRow.locator('[data-state="ongoing"]').count(), { timeout: 10_000 }).toBe(1)
+    await page.getByRole('button', { name: 'New session', exact: true }).last().click()
+    await expect.poll(() => failedRow.getAttribute('aria-selected'), { timeout: 10_000 }).toBe('false')
+    scaffold.ctx.emit('api-session/error', sessionId, 'The fixture run failed')
+    scaffold.ctx.emit('api-session/status', sessionId, false)
+    await expect.poll(() => failedRow.locator('[data-state="error"]').count(), { timeout: 10_000 }).toBe(1)
+    expect(await failedRow.getByText('Run failed', { exact: true }).count()).toBe(1)
+    for (const row of [groupRow, workspaceRow, folderRow]) {
+      const icon = row.locator('[data-attention="error"]')
+      await expect.poll(() => icon.count(), { timeout: 10_000 }).toBe(1)
+      expect(await icon.evaluate((element: HTMLElement) => {
+        const actual = getComputedStyle(element).color
+        element.style.color = 'var(--dsw-alias-state-error-primary)'
+        const error = getComputedStyle(element).color
+        element.style.removeProperty('color')
+        return actual === error
+      })).toBe(true)
+    }
+    expect(await groupRow.getAttribute('aria-label')).toContain('Contains an unread failed session')
+    expect(await folderRow.getAttribute('aria-label')).toContain('Contains an unread failed session')
+    expect(await workspaceRow.getByText('Contains an unread failed session', { exact: true }).count()).toBe(1)
+    const snapshot = await captureStableAria(page, `[data-row-key="group:${group.id}"] >> xpath=..`, scaffold.workspaceCwd)
+    await compareOrRefreshGolden(ERROR_ATTENTION_EXPECTED, snapshot, MODE)
+
+    await failedRow.click()
+    await expect.poll(() => failedRow.getAttribute('aria-selected'), { timeout: 10_000 }).toBe('true')
+    await expect.poll(() => failedRow.locator('[data-state="error"]').count(), { timeout: 10_000 }).toBe(0)
+    for (const row of [groupRow, workspaceRow, folderRow]) {
+      await expect.poll(() => row.locator('[data-attention="error"]').count(), { timeout: 10_000 }).toBe(0)
+    }
+    await workspace.deleteFolder(folder.id)
+    await scaffold.ctx.workspaceRegistry.deleteGroup(group.id)
+  }, 60_000)
 
   // The fixture's question carries options, so the round trip above only ever
   // exercises the inline shape. The optionless shape is the one that carries
@@ -1225,6 +1364,8 @@ describe.skipIf(MODE === 'record')('web e2e: late-answered question transcript',
       'session.v3.jsonl',
       'ui.expected.md',
       'sidebar.expected.md',
+      'attention.expected.md',
+      'error-attention.expected.md',
       'composed.expected.md',
       'answered.expected.md',
       'cancelled.expected.md',

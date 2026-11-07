@@ -33,7 +33,33 @@ export function owningGroupKey(
 
 /** Pending interaction kinds with dedicated Workspace-row presentation. */
 export type SessionPendingInteractionStatus = 'approval' | 'plan-review' | 'question'
+/** Highest-priority unread or pending state beneath a browser header. */
+export type AttentionState = 'pending' | 'error' | 'done'
 type SessionStatuses = SessionStatusSnapshot
+
+/**
+ * Select the highest-priority attention state.
+ * @param states - states from sessions or descendant headers.
+ * @returns pending before error before completion, or undefined when none need attention.
+ */
+export function highestAttention(states: readonly (AttentionState | undefined)[]): AttentionState | undefined {
+  if (states.includes('pending')) { return 'pending' }
+  if (states.includes('error')) { return 'error' }
+  if (states.includes('done')) { return 'done' }
+  return undefined
+}
+
+/**
+ * Resolve a session row's attention state, excluding archived sessions.
+ * @param node - session status and archive fields.
+ * @returns the pending or unread state, if present.
+ */
+export function sessionAttention(node: Pick<SessionNode, 'archived' | 'pendingInteraction' | 'completed' | 'completionError'>): AttentionState | undefined {
+  if (node.archived) { return undefined }
+  if (node.pendingInteraction !== undefined) { return 'pending' }
+  if (node.completed) { return node.completionError ? 'error' : 'done' }
+  return undefined
+}
 
 function mainSessionId(list: SessionListState): SessionId | undefined {
   return Object.values(list.byId)
@@ -52,8 +78,10 @@ export interface SessionNode {
   running: boolean
   /** Running direct children in the loaded subagent catalog. */
   runningSubagentCount: number
-  /** Finished running while not selected and not yet opened (the green "done" reminder dot). */
+  /** Stopped outside the main view and not yet opened. */
   completed: boolean
+  /** The unread stop included a runtime error. */
+  completionError?: boolean
   /** In the registry-global pin set: leads its section, reorderable only among pinned rows. */
   pinned: boolean
   /** In the registry-global archive set: shown grayed in place and not openable. */
@@ -83,6 +111,8 @@ export interface GroupNode {
   containsCurrent: boolean
   /** Some visible session in the group is running, whether or not the group is folded. */
   running: boolean
+  /** Highest-priority attention among visible, unarchived sessions, including while folded. */
+  attention?: AttentionState
   /** Visible session rows (empty while the group is folded). */
   sessions: readonly SessionNode[]
 }
@@ -97,8 +127,10 @@ export interface SearchResultNode {
   running: boolean
   /** Running direct children in the loaded subagent catalog. */
   runningSubagentCount: number
-  /** Finished running while not selected and not yet opened (the green "done" reminder dot). */
+  /** Stopped outside the main view and not yet opened. */
   completed: boolean
+  /** The unread stop included a runtime error. */
+  completionError?: boolean
   /** In the registry-global archive set: shown grayed and not openable. */
   archived: boolean
   snippet?: string
@@ -403,6 +435,7 @@ function sessionNode(
     running: status?.running ?? s.running,
     runningSubagentCount: runningChildCount(list, s.id, statuses),
     completed: status?.completionUnread === true,
+    ...(status?.completionError === true ? { completionError: true } : {}),
     pinned: !archived.has(s.id) && pinned.has(s.id),
     archived: archived.has(s.id),
     updatedAt: s.updatedAt,
@@ -444,6 +477,9 @@ export function deriveGroups(
   const groups: GroupNode[] = []
   for (const g of groupByWorkspace(list, workspaces, archived, rowState.archivedFilter, view.ungroupedOrder)) {
     const expanded = expandedGroups.has(g.key)
+    const nodes = sectionMembers(g.sessions, pinned, archived)
+      .map(session => sessionNode(session, list, statuses, pinned, archived))
+    const attention = highestAttention(nodes.map(sessionAttention))
     groups.push({
       key: g.key,
       workspaceId: g.workspaceId,
@@ -455,10 +491,8 @@ export function deriveGroups(
       containsCurrent: g.key === currentGroup,
       running: g.sessions.some(session =>
         !archived.has(session.id) && (statuses.get(session.id)?.running ?? session.running)),
-      sessions: expanded
-        ? sectionMembers(g.sessions, pinned, archived)
-          .map(session => sessionNode(session, list, statuses, pinned, archived))
-        : [],
+      ...(attention === undefined ? {} : { attention }),
+      sessions: expanded ? nodes : [],
     })
   }
   return groups
@@ -661,6 +695,7 @@ export function deriveSearchResults(
           ? {}
           : { pendingInteraction }),
         completed: status?.completionUnread === true,
+        ...(status?.completionError === true ? { completionError: true } : {}),
         archived: archived.has(summary.id),
         ...match === undefined ? {} : { snippet: match.snippet },
       }

@@ -16,7 +16,7 @@ import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   HoverCard, IconArchiveOutlineRegular,
   IconFolderCloseRegular, IconFolderOpenRegular,
-  IconFolderOpenOutlineRegular, IconLayersOutlineRegular, IconNewChatOutlineRegular, IconPinFillRegular,
+  IconFolderOpenOutlineRegular, IconLayersOutlineRegular, IconNewChatOutlineRegular, IconPinFillRegular, IconQuestionOutlineRegular,
   IconTriangleRightFillRegular, IconUnarchiveOutlineRegular, relativeTime, StateDot, Tooltip, useRowDragPreview,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ShortcutCatalogEntry } from '@deepseek-ai/dsh-client-shortcuts/client'
@@ -25,7 +25,7 @@ import { abbreviateHomePath } from '@deepseek-ai/dsh-util-workspace-path'
 import type { FolderId, GroupId, WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { ContextMenuTarget } from '@deepseek-ai/dsh-client-ui-context-menu/client'
 import type { WorkspaceBrowserProps } from '../contract/slots.ts'
-import type { GroupNode, SearchResultNode, SessionNode } from '../tree.ts'
+import { highestAttention, type AttentionState, type GroupNode, type SearchResultNode, type SessionNode } from '../tree.ts'
 import css from './Rows.module.css'
 
 /** Sidebar-owned layout values needed by row copies mounted outside the sidebar. */
@@ -225,6 +225,8 @@ type ProjectRowItemProps = {
   containsCurrentDescendant?: boolean
   /** A nested Workspace under this one has a running Session. */
   runningDescendant?: boolean
+  /** Attention from nested Workspaces. */
+  attentionDescendant?: AttentionState | undefined
   onToggle: () => void
   onCreate: () => void
   /** Present only for real Workspace rows in the grouped view. */
@@ -250,6 +252,7 @@ interface ProjectRowAccess {
  * @param props.group - derived group node.
  * @param props.containsCurrentDescendant - highlight an ancestor even when its subtree is collapsed.
  * @param props.runningDescendant - animate the folder glyph although only a nested Workspace is running.
+ * @param props.attentionDescendant - attention from nested Workspaces.
  * @param props.onToggle - expand/collapse the group.
  * @param props.onCreate - start a frontend Session inside this Workspace.
  * @param props.drag - optional workspace-row drag wiring.
@@ -299,8 +302,8 @@ function WorkspaceProjectRow({ workspaceId, ...props }: ProjectRowItemProps & { 
 }
 
 function ProjectRow({
-  group, containsCurrentDescendant = false, runningDescendant = false, onToggle, onCreate, drag: offeredDrag, home, newShortcut, t, access,
-  renderFactorySlot, useContextMenuTarget, useContextMenu,
+  group, containsCurrentDescendant = false, runningDescendant = false, attentionDescendant, onToggle, onCreate,
+  drag: offeredDrag, home, newShortcut, t, access, renderFactorySlot, useContextMenuTarget, useContextMenu,
 }: ProjectRowItemProps & { access: ProjectRowAccess }) {
   const { getTriggerProps } = useContextMenu()
   const drag = access.reorder ? offeredDrag : undefined
@@ -308,6 +311,7 @@ function ProjectRow({
   // The ungrouped bucket has no workspace title: its label is dictionary copy.
   const label = row.workspaceId === undefined ? t('group.ungrouped') : row.label
   const active = containsCurrentDescendant || (group.expanded && group.containsCurrent)
+  const attention = highestAttention([group.attention, attentionDescendant])
   const menuOpen = useContextMenuTarget(target => target?.kind === 'workspace' && target.value.workspaceId === row.workspaceId)
   const dragPreview = useRowDragPreview(css.dragPreview as string, DRAG_PREVIEW_PROPERTIES)
   const workspaceMenuTarget = row.workspaceId !== undefined && row.cwd !== undefined
@@ -331,7 +335,7 @@ function ProjectRow({
         }}
       onDragEnd={() => { if (dragPreview.clear()) drag?.end() }}
     >
-      <span className={clsx(css.slot, css.folder, active && css.folderActive)}>
+      <span className={clsx(css.slot, css.folder, active && css.folderActive)} data-attention={attention}>
         {group.running || runningDescendant
           ? <RunningFolderIcon />
           : row.expanded ? <IconFolderOpenRegular /> : <IconFolderCloseRegular />}
@@ -341,6 +345,7 @@ function ProjectRow({
       </span>
       <span className={css.projectText}>
         <span className={css.title}>{label}</span>
+        {attention !== undefined && <span className={css.visuallyHidden}>{t(`status.attention.${attention}`)}</span>}
       </span>
       <span className={css.rowActions}>
         {workspaceMenuTarget !== undefined && (
@@ -393,6 +398,8 @@ type OrganizationRowProps = {
   icon: ReactNode
   /** Replaces `icon` with the animated folder while a Session below is running. */
   running: boolean
+  attention: AttentionState | undefined
+  attentionLabel: string | undefined
   title: string
   expanded: boolean
   /** The selected Session lives under this row, so a collapsed row stays highlighted. */
@@ -414,8 +421,8 @@ type OrganizationRowProps = {
 }
 
 function OrganizationRow({
-  icon, running, title, expanded, containsCurrent, count, canManage, actionsLabel, onToggle, menuTarget, menuOpen, rowKey,
-  useContextMenu, renderFactorySlot,
+  icon, running, attention, attentionLabel, title, expanded, containsCurrent, count, canManage, actionsLabel, onToggle,
+  menuTarget, menuOpen, rowKey, useContextMenu, renderFactorySlot,
 }: OrganizationRowProps) {
   const { getTriggerProps } = useContextMenu()
   return (
@@ -424,11 +431,11 @@ function OrganizationRow({
       data-row-key={rowKey}
       role="treeitem"
       aria-expanded={expanded}
-      aria-label={`${title} (${count})`}
+      aria-label={`${title} (${count})${attentionLabel === undefined ? '' : `, ${attentionLabel}`}`}
       onClick={onToggle}
       {...getTriggerProps(canManage ? menuTarget : undefined)}
     >
-      <span className={clsx(css.slot, css.folder, containsCurrent && !expanded && css.folderActive)}>
+      <span className={clsx(css.slot, css.folder, containsCurrent && !expanded && css.folderActive)} data-attention={attention}>
         {running ? <RunningFolderIcon /> : icon}
       </span>
       <span className={clsx(css.slot, css.chevron)}>
@@ -454,6 +461,7 @@ type GroupRowItemProps = {
   expanded: boolean
   containsCurrent: boolean
   running: boolean
+  attention?: AttentionState | undefined
   workspaceCount: number
   onToggle: () => void
   t: RowTranslate
@@ -466,14 +474,15 @@ type GroupRowItemProps = {
  * @returns the header row element.
  */
 export function GroupRowItem({
-  groupId, title, expanded, containsCurrent, running, workspaceCount, onToggle, renderFactorySlot, useContextMenu, useContextMenuTarget,
-  useRemoteAccess, t,
+  groupId, title, expanded, containsCurrent, running, attention, workspaceCount, onToggle, renderFactorySlot,
+  useContextMenu, useContextMenuTarget, useRemoteAccess, t,
 }: GroupRowItemProps) {
   const canManage = useRemoteAccess('workspace/renameGroup')
   const menuOpen = useContextMenuTarget(target => target?.kind === 'workspaceGroup' && target.value.groupId === groupId)
   return (
     <OrganizationRow
-      icon={<IconLayersOutlineRegular />} running={running}
+      icon={<IconLayersOutlineRegular />} running={running} attention={attention}
+      attentionLabel={attention === undefined ? undefined : t(`status.attention.${attention}`)}
       title={title} expanded={expanded} containsCurrent={containsCurrent} count={workspaceCount} canManage={canManage}
       actionsLabel={t('actions.group.aria', { name: title })} onToggle={onToggle}
       menuTarget={{ kind: 'workspaceGroup', value: { groupId, displayTitle: title } }} menuOpen={menuOpen}
@@ -489,6 +498,7 @@ type FolderRowItemProps = {
   expanded: boolean
   containsCurrent: boolean
   running: boolean
+  attention?: AttentionState | undefined
   sessionCount: number
   onToggle: () => void
   t: RowTranslate
@@ -502,14 +512,15 @@ type FolderRowItemProps = {
  * @returns the header row element.
  */
 export function FolderRowItem({
-  workspaceId, folderId, title, expanded, containsCurrent, running, sessionCount, onToggle, renderFactorySlot, useContextMenu,
+  workspaceId, folderId, title, expanded, containsCurrent, running, attention, sessionCount, onToggle, renderFactorySlot, useContextMenu,
   useContextMenuTarget, useWorkspaceAccess, t,
 }: FolderRowItemProps) {
   const canManage = useWorkspaceAccess(workspaceId, 'workspace/renameFolder')
   const menuOpen = useContextMenuTarget(target => target?.kind === 'workspaceFolder' && target.value.folderId === folderId)
   return (
     <OrganizationRow
-      icon={<IconFolderOpenOutlineRegular />} running={running}
+      icon={<IconFolderOpenOutlineRegular />} running={running} attention={attention}
+      attentionLabel={attention === undefined ? undefined : t(`status.attention.${attention}`)}
       title={title} expanded={expanded} containsCurrent={containsCurrent} count={sessionCount} canManage={canManage}
       actionsLabel={t('actions.folder.aria', { name: title })} onToggle={onToggle}
       menuTarget={{ kind: 'workspaceFolder', value: { workspaceId, folderId, displayTitle: title } }} menuOpen={menuOpen}
@@ -535,7 +546,7 @@ interface SessionStatus {
  * outranks completion reminders.
  */
 function sessionStatuses(
-  node: Pick<SessionNode, 'pendingInteraction' | 'running' | 'runningSubagentCount' | 'completed'>,
+  node: Pick<SessionNode, 'pendingInteraction' | 'running' | 'runningSubagentCount' | 'completed' | 'completionError'>,
   t: RowTranslate,
 ): readonly [SessionStatus, ...SessionStatus[]] {
   const subagents: SessionStatus | undefined = node.runningSubagentCount === 0
@@ -582,7 +593,11 @@ function sessionStatuses(
     return subagents === undefined ? [primary] : [primary, subagents]
   }
   if (subagents !== undefined) return [subagents]
-  if (node.completed) return [{ state: 'done', label: t('status.completed') }]
+  if (node.completed) {
+    return node.completionError
+      ? [{ state: 'error', label: t('status.failed') }]
+      : [{ state: 'done', label: t('status.completed') }]
+  }
   return [{ state: 'idle', label: t('status.idle') }]
 }
 
@@ -590,7 +605,9 @@ function sessionStatuses(
 function SessionStatusDots({ statuses }: { statuses: readonly [SessionStatus, ...SessionStatus[]] }) {
   return (
     <>
-      <StateDot state={statuses[0].state} />
+      {statuses[0].state === 'warning'
+        ? <IconQuestionOutlineRegular className={css.pendingIcon} size={14} aria-hidden="true" />
+        : <StateDot state={statuses[0].state} />}
       {statuses.map(status => (
         <span className={css.visuallyHidden} key={status.label}>{status.label}</span>
       ))}
@@ -624,7 +641,7 @@ function SessionHoverContent({ node, cwd, now, renderSlot, t }: {
   // On archived rows the archived line already says the session is inactive,
   // so resting statuses (idle/completed) drop; live activity still shows.
   const statuses = sessionStatuses(node, t)
-    .filter(status => !(node.archived && (status.state === 'done' || status.state === 'idle')))
+    .filter(status => !(node.archived && (status.state === 'done' || status.state === 'error' || status.state === 'idle')))
   return (
     <div className={css.hoverContent}>
       <div className={css.hoverTitle}>{displayTitle(node, t)}</div>

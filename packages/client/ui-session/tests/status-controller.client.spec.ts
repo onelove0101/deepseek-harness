@@ -48,16 +48,22 @@ it('preserves unlisted child status through metadata updates and main view ackno
   expect(sessions.list.getSnapshot().byId[parentId]?.updatedAt).toBe(2)
   expect(ui.sessionStatus.getSnapshot().get(childId)).toMatchObject({ running: true, completionUnread: false })
 
+  mock.streams.push('$events', { type: 'emit', event: 'api-session/error', args: [childId, 'runtime failed'] })
+  await mock.streams.drained('$events')
+  await client.flush()
+  expect(sessions.binding(childId)).toBeUndefined()
+  expect(ui.sessionStatus.getSnapshot().get(childId)).toMatchObject({ running: true, completionUnread: false, completionError: false })
+
   mock.streams.push('$events', { type: 'emit', event: 'api-session/status', args: [childId, false] })
   await mock.streams.drained('$events')
   await client.flush()
-  expect(ui.sessionStatus.getSnapshot().get(childId)).toMatchObject({ running: false, completionUnread: true })
+  expect(ui.sessionStatus.getSnapshot().get(childId)).toMatchObject({ running: false, completionUnread: true, completionError: true })
 
   using reference = sessions.retain(childId, { source: 'mainView' })
   await reference.ready
   expect(sessions.list.getSnapshot().ids).not.toContain(childId)
   await vi.waitFor(() => {
-    expect(ui.sessionStatus.getSnapshot().get(childId)).toMatchObject({ running: false, completionUnread: false })
+    expect(ui.sessionStatus.getSnapshot().get(childId)).toMatchObject({ running: false, completionUnread: false, completionError: false })
   })
   reference.release()
   await client.flush()
