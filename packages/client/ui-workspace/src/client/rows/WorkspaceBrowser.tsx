@@ -1149,6 +1149,7 @@ export function WorkspaceBrowser({
   useSessionStatus,
   useSessionAccess,
   useWorkspaceAccess,
+  useRemoteAccess,
   useWorkspaces,
   useStore,
   actions,
@@ -1669,6 +1670,7 @@ export function WorkspaceBrowser({
               <SessionTree
                 useSessionAccess={useSessionAccess}
                 useWorkspaceAccess={useWorkspaceAccess}
+                useRemoteAccess={useRemoteAccess}
                 usePanelInfo={usePanelInfo}
                 list={list}
                 shortcuts={shortcuts}
