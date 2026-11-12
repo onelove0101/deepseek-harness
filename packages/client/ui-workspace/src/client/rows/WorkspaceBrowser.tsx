@@ -783,7 +783,6 @@ function SessionTree({
           newShortcut={shortcuts.find(row => row.id === 'session.new')}
           group={group}
           renderFactorySlot={renderFactorySlot} useContextMenu={useContextMenu} useContextMenuTarget={useContextMenuTarget}
-          useRemoteAccess={useRemoteAccess}
           useWorkspaceAccess={useWorkspaceAccess}
           containsCurrentDescendant={currentAncestors.has(group.key)}
           runningDescendant={runningAncestors.has(group.key)}
@@ -794,11 +793,9 @@ function SessionTree({
             if (group.expanded) dropWatermarks(key => withinGroup(key, group.key))
             setGroupExpanded(expansionKeyOf(group.key), !group.expanded)
           }}
-          onCreate={() => {
-            if (group.workspaceId !== undefined) {
-              setGroupExpanded(expansionKeyOf(group.key), true)
-              startSession(group.workspaceId)
-            }
+          onCreate={(workspaceId) => {
+            setGroupExpanded(expansionKeyOf(group.key), true)
+            startSession(workspaceId)
           }}
           drag={workspaceDragProps}
         />
@@ -1150,7 +1147,6 @@ export function WorkspaceBrowser({
   useSectionScroller,
   useSessions,
   useSessionStatus,
-  useRemoteAccess,
   useSessionAccess,
   useWorkspaceAccess,
   useWorkspaces,
@@ -1671,7 +1667,6 @@ export function WorkspaceBrowser({
             )
             : (
               <SessionTree
-                useRemoteAccess={useRemoteAccess}
                 useSessionAccess={useSessionAccess}
                 useWorkspaceAccess={useWorkspaceAccess}
                 usePanelInfo={usePanelInfo}
