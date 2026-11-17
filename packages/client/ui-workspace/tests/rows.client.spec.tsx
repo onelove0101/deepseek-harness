@@ -364,13 +364,13 @@ describe('workspace browser rows', () => {
 
   it.each([
     ['failed completion', { completed: true, failed: true }, 'error', 'Run failed'],
-    ['unread stop without an observed error', { completed: true }, 'done', 'Completed'],
+    ['unread stop without an observed error', { completed: true, failed: false }, 'done', 'Completed'],
     ['running before failure', { running: true, completed: true, failed: true }, 'ongoing', 'Running'],
     ['subagent before failure', { runningSubagentCount: 1, completed: true, failed: true }, 'ongoing', '1 subagent running'],
   ] as const)('renders %s consistently in session and search rows', (_name, overrides, state, label) => {
     const node: SessionNode = {
       id: sid('status'), title: 'Status', blank: false, running: false, runningSubagentCount: 0,
-      updatedAt: 0, pinned: false, archived: false, ...overrides,
+      updatedAt: 0, pinned: false, archived: false, failed: false, ...overrides,
     }
     const session = render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={vi.fn()} t={tEn} />)
     expect(screen.getByRole('treeitem').querySelector(`[data-state="${state}"]`)).toBeTruthy()
@@ -436,7 +436,7 @@ describe('workspace browser rows', () => {
   it('marks only running session rows with the aurora-border class', () => {
     const node: SessionNode = {
       id: sid('running'), title: 'Running Session', blank: false, running: true,
-      runningSubagentCount: 0, completed: false, updatedAt: 0, pinned: false, archived: false,
+      runningSubagentCount: 0, completed: false, failed: false, updatedAt: 0, pinned: false, archived: false,
     }
     const view = render(
       <SessionNodeItem node={node} currentId={undefined} now={0} onOpen={vi.fn()} t={t} />,

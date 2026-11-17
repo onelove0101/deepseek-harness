@@ -7,6 +7,8 @@ import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controlle
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { registerSessionMenus } from '../src/client/session-actions/context-menus.tsx'
 import { en, zh } from '../src/client/locales.ts'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import { provideSessionStatus } from './session-status.client.ts'
 
 function bench() {
   const ctx = new Context()
@@ -21,6 +23,7 @@ function bench() {
     items: [], topLevelWorkspaceIds: [], groups: [], pinnedSessionIds: [], archivedSessionIds: [], state: 'idle', phase: 'ready', error: null,
   })
   ctx.provide('workspaces', { list } as never)
+  provideSessionStatus(ctx)
   const permissions = new Map<string, ReturnType<typeof createSnapshotStore<boolean>>>()
   const access = (action: string) => {
     let source = permissions.get(action)
@@ -29,9 +32,10 @@ function bench() {
   }
   ctx.provide('remoteAccess', { source: (_kind: string, _id: string, action: string) => access(action) } as never)
   const actions = { pinSession: vi.fn(), unpinSession: vi.fn(), archiveSession: vi.fn(), unarchiveSession: vi.fn(),
-    forkSession: vi.fn(), requestSessionRemove: vi.fn(), requestSessionRename: vi.fn(), copySessionId: vi.fn(async () => {}) }
+    forkSession: vi.fn(), requestSessionRemove: vi.fn(), requestSessionRename: vi.fn(), copySessionId: vi.fn(async () => {}),
+    markSession: vi.fn() }
   const fiber = ctx.plugin({ apply: (plugin: Context) => { registerSessionMenus(plugin, actions) } })
-  const target = { kind: 'session' as const, value: { sessionId: SessionId('background'), displayTitle: 'Background' } }
+  const target = { kind: 'session' as const, value: { sessionId: brandString<SessionId>('background'), displayTitle: 'Background' } }
   const open = () => registry.resolve(target)
   return { ctx, fiber, registry, locale, list, access, actions, target, open }
 }
@@ -45,6 +49,7 @@ it('preserves built-in order, groups, icons, command identities, and captured ac
     [id, label, icon !== undefined, commandId, separatorBefore, afterContent])).toEqual([
     ['session.pin/pin', 'Pin session', true, undefined, undefined, undefined],
     ['session.rename/rename', 'Rename', true, 'session.rename', undefined, undefined],
+    ['session.read-state/mark', 'Mark as unread', true, 'session.toggleRead', undefined, undefined],
     ['session.fork/fork', 'Fork session', true, 'session.fork', undefined, undefined],
     ['session.id/copy', 'Copy Session ID', true, undefined, true, undefined],
     ['session.archive/archive', 'Archive session', true, 'session.archive', true, true],

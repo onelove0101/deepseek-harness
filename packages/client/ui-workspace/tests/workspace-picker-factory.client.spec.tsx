@@ -142,7 +142,7 @@ describe('workspace.picker Factory', () => {
       await act(async () => {
         resolve({
           workspaceId: 'w-project' as WorkspaceId, title: 'project', path: '/tmp/project',
-          sessionIds: [], createdAt: '0', updatedAt: '0',
+          sessionIds: [], folders: [], createdAt: '0', updatedAt: '0',
         })
       })
       expect(screen.getByRole('status').textContent).toBe('w-project')

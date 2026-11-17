@@ -2,7 +2,8 @@
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
-import type { AddContribution, CommandContribution } from '@deepseek-ai/dsh-client-ui-commands/client'
+import type { CommandContribution } from '@deepseek-ai/dsh-client-ui-commands/client'
+import type { AddContribution } from '@deepseek-ai/dsh-client-ui-commands/src/client/contract.ts'
 import type { InputTriggerSource } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
@@ -246,7 +247,7 @@ describe('ui-expert browser plugin', () => {
     it('lists the Host-ranked enabled Experts in rank order and reads them afresh on every open', async () => {
       const { b, flyout } = await open()
       const rows = await flyout.options(session, signal())
-      expect(rows.map(row => row.id)).toEqual(['researcher', 'reviewer'])
+      expect(rows.map((row: { id: string }) => row.id)).toEqual(['researcher', 'reviewer'])
       expect(rows[1]).toEqual({
         id: 'reviewer', label: 'reviewer', value: '["researcher","reviewer"]', detail: 'Review every change.',
       })

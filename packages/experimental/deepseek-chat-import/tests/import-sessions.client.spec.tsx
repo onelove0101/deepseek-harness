@@ -24,11 +24,12 @@ function hook<T>(snapshot: T) {
 }
 
 const view = (id: string, title: string, sessionIds: SessionId[]) => ({
-  workspaceId: id as WorkspaceId, title, path: `/home/a/${title}`, sessionIds,
+  workspaceId: id as WorkspaceId, title, path: `/home/a/${title}`, sessionIds, folders: [],
   createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
 })
 const workspaces: WorkspaceSnapshot = {
   items: [view('w1', 'project-one', [sid('s-current')]), view('w2', 'project-two', [])],
+  topLevelWorkspaceIds: ['w1', 'w2'], groups: [],
   archivedSessionIds: [], pinnedSessionIds: [], state: 'idle', phase: 'ready', error: null,
 }
 
