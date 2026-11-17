@@ -18,6 +18,7 @@ import llmRemote from '@deepseek-ai/dsh-llm/remote'
 import dynamicRemote from '@deepseek-ai/dsh-cordis-host-runner/remote'
 import pluginManagerRemote from '@deepseek-ai/dsh-plugin-manager/remote'
 import mcpManagerRemote from '@deepseek-ai/dsh-mcp-manager/remote'
+import connectionsRemote from '@deepseek-ai/dsh-connections/remote'
 import toolResultsRemote from '@deepseek-ai/dsh-client-ui-trajectory/remote'
 import pluginRegistryProbeRemote from '@deepseek-ai/dsh-client-ui-plugin-manager/remote'
 import pluginMarketRemote from '@deepseek-ai/dsh-plugin-market/remote'
@@ -46,8 +47,10 @@ export type {
   ReadOnlyReason, Registry, RestartReason,
 } from '@deepseek-ai/dsh-plugin-manager/types'
 export type { McpManagedServerStatus, McpManagedServerView } from '@deepseek-ai/dsh-mcp-manager/types'
+export type { ConnectorId, ConnectorPhase, ConnectorView } from '@deepseek-ai/dsh-connections/types'
 export type {} from '@deepseek-ai/dsh-plugin-manager/remote'
 export type {} from '@deepseek-ai/dsh-mcp-manager/remote'
+export type {} from '@deepseek-ai/dsh-connections/remote'
 export type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/remote'
 export type {} from '@deepseek-ai/dsh-client-ui-trajectory/remote'
 export type {} from '@deepseek-ai/dsh-plugin-market/remote'
@@ -202,7 +205,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     for (const contribution of [
       productAnalyticsRemote, agentPresetsRemote, commandsRemote, agentTeamsRemote, settingsControllerRemote, accountRemote,
       goalsRemote, llmRemote, dynamicRemote, scheduleRemote,
-      pluginInventoryRemote, pluginManagerRemote, mcpManagerRemote, pluginMarketRemote, pluginRegistryProbeRemote,
+      pluginInventoryRemote, pluginManagerRemote, mcpManagerRemote, connectionsRemote, pluginMarketRemote, pluginRegistryProbeRemote,
       toolResultsRemote, expertsRemote,
       messageFeedbackRemote, sessionFeedbackRemote,
       fileUploadsRemote, sessionReferencesRemote,

@@ -84,6 +84,9 @@
       "path": "../../mcp/mcp-manager"
     },
     {
+      "path": "../../mcp/connections"
+    },
+    {
       "path": "../../boot/plugin-market"
     },
     {

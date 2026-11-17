@@ -169,6 +169,15 @@
       name: '@deepseek-ai/dsh-mcp-manager'
       inject: [credentials]
 
+    # OAuth connector registry: authorizes built-in partners, stores grants, and
+    # registers their MCP servers through the manager.
+    - id: connections
+      name: '@deepseek-ai/dsh-connections'
+      inject: [credentials, authorization, mcpManager]
+      config:
+        googleOAuthClientId: !!js process.env.GOOGLE_OAUTH_CLIENT_ID ?? ''
+        googleOAuthClientSecret: !!js process.env.GOOGLE_OAUTH_CLIENT_SECRET ?? ''
+
     # Workspace commands and reconnect-safe projection over Typert Remote.
     - id: workspace-controller
       name: '@deepseek-ai/dsh-api-workspace-controller'
@@ -363,6 +372,9 @@
 
     - id: ui-settings-skills
       name: '@deepseek-ai/dsh-client-ui-settings-skills'
+
+    - id: ui-settings-connections
+      name: '@deepseek-ai/dsh-client-ui-settings-connections'
 
     - id: ui-expert
       name: '@deepseek-ai/dsh-client-ui-expert'
