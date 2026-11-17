@@ -909,7 +909,7 @@ describe('WorkspaceBrowser', () => {
     })
     const status = (id: string, value: Partial<SessionStatus>) =>
       hook<SessionStatusSnapshot>(new Map([[sid(id), {
-        running: false, pendingInteraction: undefined, completionUnread: false, completionError: false, ...value,
+        running: false, pendingInteraction: undefined, completionUnread: false, completionFailed: false, ...value,
       }]]))
     const expectVisible = (count: number) => {
       expect(screen.getAllByRole('treeitem').map(row => within(row).getByText(/^(alpha|session-\d+)$/u).textContent))
@@ -946,7 +946,7 @@ describe('WorkspaceBrowser', () => {
     })
     fireEvent.click(screen.getByText('alpha'))
     const running = (value: boolean) => hook<SessionStatusSnapshot>(new Map([[sid('session-9'), {
-      running: value, pendingInteraction: undefined, completionUnread: false, completionError: false,
+      running: value, pendingInteraction: undefined, completionUnread: false, completionFailed: false,
     }]]))
     rerender(b, { useSessionStatus: running(true) })
     rerender(b, { useSessionStatus: running(false) })
@@ -969,15 +969,15 @@ describe('WorkspaceBrowser', () => {
     })
     fireEvent.click(screen.getByText('alpha'))
     const running = (...ids: string[]) => hook<SessionStatusSnapshot>(new Map(ids.map(id => [sid(id), {
-      running: true, pendingInteraction: undefined, completionUnread: false, completionError: false,
+      running: true, pendingInteraction: undefined, completionUnread: false, completionFailed: false,
     }])))
     rerender(b, {
       useSessions: hook(sessionState(items, { main: sid('session-53') })),
       useSessionStatus: hook<SessionStatusSnapshot>(new Map([
-        [sid('session-55'), { running: true, pendingInteraction: undefined, completionUnread: false, completionError: false }],
-        [sid('session-56'), { running: false, pendingInteraction: undefined, completionUnread: true, completionError: false }],
+        [sid('session-55'), { running: true, pendingInteraction: undefined, completionUnread: false, completionFailed: false }],
+        [sid('session-56'), { running: false, pendingInteraction: undefined, completionUnread: true, completionFailed: false }],
         [sid('session-57'), {
-          running: false, completionUnread: false, completionError: false,
+          running: false, completionUnread: false, completionFailed: false,
           pendingInteraction: { key: 'question:1', kind: 'question', sessionId: sid('session-57') } as SessionPendingInteraction,
         }],
       ])),
@@ -2683,10 +2683,10 @@ describe('WorkspaceBrowser', () => {
     it('aggregates attention through collapsed group and folder headers, excluding archives', () => {
       const statuses: SessionStatusSnapshot = new Map([
         [sid('pending'), {
-          running: false, completionUnread: false, completionError: false,
+          running: false, completionUnread: false, completionFailed: false,
           pendingInteraction: { key: 'question:1', kind: 'question', sessionId: sid('pending') } as SessionPendingInteraction,
         }],
-        [sid('failed'), { running: false, pendingInteraction: undefined, completionUnread: true, completionError: true }],
+        [sid('failed'), { running: false, pendingInteraction: undefined, completionUnread: true, completionFailed: true }],
       ])
       const b = mount({
         useSessions: hook(sessionState([summary('pending', 2), summary('failed', 1)])),
@@ -3137,9 +3137,9 @@ describe('Workspace tree grouping', () => {
 
   it('propagates descendant attention through collapsed nested workspaces', () => {
     const statuses: SessionStatusSnapshot = new Map([
-      [sid('root-session'), { running: false, pendingInteraction: undefined, completionUnread: true, completionError: true }],
+      [sid('root-session'), { running: false, pendingInteraction: undefined, completionUnread: true, completionFailed: true }],
       [sid('child-session'), {
-        running: false, completionUnread: false, completionError: false,
+        running: false, completionUnread: false, completionFailed: false,
         pendingInteraction: { key: 'question:1', kind: 'question', sessionId: sid('child-session') } as SessionPendingInteraction,
       }],
     ])
@@ -3214,7 +3214,7 @@ describe('Workspace tree grouping', () => {
     fireEvent.click(screen.getByText('Child'))
     fireEvent.click(screen.getByText('Projects'))
     const status = (running: boolean) => hook<SessionStatusSnapshot>(new Map([[sid('child-8'), {
-      running, pendingInteraction: undefined, completionUnread: false, completionError: false,
+      running, pendingInteraction: undefined, completionUnread: false, completionFailed: false,
     }]]))
     rerender(b, { useSessionStatus: status(true) })
     rerender(b, { useSessionStatus: status(false) })

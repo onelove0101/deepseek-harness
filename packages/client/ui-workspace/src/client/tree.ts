@@ -9,7 +9,7 @@ import {
 import type { FolderId, WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type {
   SessionStatusSnapshot,
-} from '@deepseek-ai/dsh-client-ui-session/client'
+} from '@deepseek-ai/dsh-client-ui-session-status/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { workspaceTitleOf } from '@deepseek-ai/dsh-util-workspace-path'
@@ -54,10 +54,10 @@ export function highestAttention(states: readonly (AttentionState | undefined)[]
  * @param node - session status and archive fields.
  * @returns the pending or unread state, if present.
  */
-export function sessionAttention(node: Pick<SessionNode, 'archived' | 'pendingInteraction' | 'completed' | 'completionError'>): AttentionState | undefined {
+export function sessionAttention(node: Pick<SessionNode, 'archived' | 'pendingInteraction' | 'completed' | 'failed'>): AttentionState | undefined {
   if (node.archived) { return undefined }
   if (node.pendingInteraction !== undefined) { return 'pending' }
-  if (node.completed) { return node.completionError ? 'error' : 'done' }
+  if (node.completed) { return node.failed ? 'error' : 'done' }
   return undefined
 }
 
@@ -80,8 +80,8 @@ export interface SessionNode {
   runningSubagentCount: number
   /** Stopped outside the main view and not yet opened. */
   completed: boolean
-  /** The unread stop included a runtime error. */
-  completionError?: boolean
+  /** Latest unread completion ended with an execution error. */
+  failed: boolean
   /** In the registry-global pin set: leads its section, reorderable only among pinned rows. */
   pinned: boolean
   /** In the registry-global archive set: shown grayed in place and not openable. */
@@ -129,8 +129,8 @@ export interface SearchResultNode {
   runningSubagentCount: number
   /** Stopped outside the main view and not yet opened. */
   completed: boolean
-  /** The unread stop included a runtime error. */
-  completionError?: boolean
+  /** Latest unread completion ended with an execution error. */
+  failed: boolean
   /** In the registry-global archive set: shown grayed and not openable. */
   archived: boolean
   snippet?: string
@@ -435,7 +435,7 @@ function sessionNode(
     running: status?.running ?? s.running,
     runningSubagentCount: runningChildCount(list, s.id, statuses),
     completed: status?.completionUnread === true,
-    ...(status?.completionError === true ? { completionError: true } : {}),
+    failed: status?.completionFailed === true,
     pinned: !archived.has(s.id) && pinned.has(s.id),
     archived: archived.has(s.id),
     updatedAt: s.updatedAt,
@@ -695,7 +695,7 @@ export function deriveSearchResults(
           ? {}
           : { pendingInteraction }),
         completed: status?.completionUnread === true,
-        ...(status?.completionError === true ? { completionError: true } : {}),
+        failed: status?.completionFailed === true,
         archived: archived.has(summary.id),
         ...match === undefined ? {} : { snippet: match.snippet },
       }

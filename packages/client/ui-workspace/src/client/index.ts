@@ -259,8 +259,11 @@ export function apply(ctx: Context): void {
     },
     unarchiveSession,
   })
+  const markSession = (sessionId: SessionId, unread: boolean): void => {
+    ctx.uiSession.sessionStatus.mark(sessionId, unread).catch(() => { notify({ kind: 'readingFailed' }) })
+  }
   installWorkspaceShortcuts(ctx, uiWorkspace, shortcutControls, archiveInjected().archiveSession,
-    (reason) => { notify({ kind: 'shortcutForkFailed', reason }) })
+    (reason) => { notify({ kind: 'shortcutForkFailed', reason }) }, markSession)
   const archiveConfirmInjected = (): SessionArchiveConfirmInjected => ({
     hooks: { archiveRequest },
     settleSessionArchive: () => { archiveRequest.set(null) },
@@ -411,7 +414,8 @@ export function apply(ctx: Context): void {
     } },
   }, SessionMenu))
   registerSessionMenus(ctx, {
-    ...pinInjected(), ...archiveInjected(), ...renameInjected(), ...forkInjected(), ...sessionIdInjected(), ...removeInjected(),
+    ...pinInjected(), ...archiveInjected(), ...renameInjected(), ...forkInjected(), ...sessionIdInjected(),
+    ...removeInjected(), markSession,
   })
   ctx.slots.inject('sidebar.workspaces.session.row.action', function* () {
     yield ctx.slots.register({ name: 'sidebar.workspaces.session.row.action', id: 'archive', order: 100, locale: NS, inject: archiveInjected }, ArchiveSessionRowButton)

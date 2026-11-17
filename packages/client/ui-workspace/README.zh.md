@@ -11,7 +11,7 @@ kind: "package-reference"
 
 ## 概述
 
-本包让用户浏览分组或扁平的 Session 列表、为新 Session 选择 Workspace，并通过添加、重命名、重排序、搜索、fork、归档和删除 Workspace 来管理 Workspace 与 Session；Session 行菜单及其悬停按钮是可由客户端插件扩展的 slot 列表。待处理交互显示为黄色问号图标，subagent 来源的 Session 则保持隐藏。处于空闲状态且未归档、其 Session 有活动定时任务的 Session 行会显示时钟标记，其悬浮卡片会列出这些任务。规范化后仍有差异的文件夹路径会保留为独立 Workspace。添加 Workspace 需要组合目录选择器；没有目录选择器时，添加操作不可用。
+本包让用户浏览分组或扁平的 Session 列表、为新 Session 选择 Workspace，并通过添加、重命名、重排序、搜索、fork、归档和删除 Workspace 来管理 Workspace 与 Session；Session 行菜单及其悬停按钮是可由客户端插件扩展的 slot 列表。待处理交互显示为警告点，subagent 来源的 Session 则保持隐藏。处于空闲状态且未归档、其 Session 有活动定时任务的 Session 行会显示时钟标记，其悬浮卡片会列出这些任务。规范化后仍有差异的文件夹路径会保留为独立 Workspace。添加 Workspace 需要组合目录选择器；没有目录选择器时，添加操作不可用。
 
 ## 目录
 
@@ -31,6 +31,8 @@ kind: "package-reference"
 
 未保存标题的历史会话显示本地化名称「未命名 / Untitled」，不使用目录名兜底。当前空会话仍显示「新会话」，其他空会话仍隐藏。重命名草稿使用已保存标题，无标题时留空；无标题行不提供标题复制。
 
+会话菜单中的**标为已读／标为未读**将阅读状态保存到宿主，并同步给各前端；已归档的会话按已读处理，不提供这两项。宿主运行期间刷新浏览器会保留未读提醒，宿主重启或插件重载则会重置，可与运行状态同时出现，不表示任务成功。窗口聚焦只确认自然未读。手动未读会保留到主视图切换到该会话或主动标为已读，自动确认始终等待正文到达。同步和生命周期的限制见[会话状态](../ui-session-status/README.zh.md)。
+
 无 hover 时，工作区操作仅在展开时显示，会话的更多按钮始终显示，搜索结果操作保持可见。工具栏的提示气泡在侧边栏外渲染，避免被抽屉动画裁切。使用粗指针时，搜索和重命名输入框采用 16px 字号；精细指针下保留紧凑字号。
 
 ### 重排序与视图选项
@@ -45,8 +47,6 @@ kind: "package-reference"
 
 选择**添加工作区**并选取目录，即可注册工作区并打开 Session。**视图选项 → 分组方式**默认为**按工作区**，将工作区作为同级分组显示。选择**按工作区树**后，每个 Workspace 会位于最近的已注册祖先之下，之后添加的 Workspace 也会自动归入。每个 Workspace 保留自己的 Session 和行操作，子 Workspace 显示在父级自己的 Session 之前。祖先默认展开，已有的折叠偏好除外。保存的折叠状态也会隐藏当前 Session；如果后代 Workspace 包含当前 Session，祖先文件夹图标仍保持高亮。各层级的高亮和点击区域保持整行同宽，仅内容缩进。拖拽 Workspace 仅重排同级项目；落在后代行上时，由最近的兼容祖先接收，因此无需先折叠父级就能将其他工作区拖到其后。选择搜索结果会展开全部祖先。分组方式和展开状态保存在当前浏览器中；切换模式会保留各 Workspace 的展开偏好，单列表视图保持平铺。
 
-在**按工作区**分组下，浏览器还会显示 Host 存储的持久化组织结构。**视图选项 → 新建工作区组**创建分组；分组行列出其 Workspace，默认折叠，点击展开（包含当前或被定位 Session 的分组、Workspace 或文件夹会自行展开，除非用户已作选择）。分组行的操作按钮提供重命名与解散；解散会让其 Workspace 回到顶层。Workspace 菜单新增**新建文件夹**和**移至工作区组**；文件夹行列出归入其中的 Session，未归档的 Session 留在 Workspace 根目录，Session 菜单新增**移至文件夹**。文件夹行提供重命名与删除；删除会让其中的 Session 回到根目录。创建、重命名和删除都通过对话框确认，被拒绝时对话框保持打开，破坏性操作会等到投影不再包含目标后才关闭。分组成员和已归档 Session 保持 Host 存储的顺序，因此只有顶层 Workspace 与根目录 Session 可以拖拽排序。这些展开状态使用带命名空间的键 `workspace:`、`workspace-group:`、`workspace-folder:` 和 `workspace-ungrouped`；按工作区树模式沿用以 Workspace id 为键的旧键，按工作区分组也仍把已保存的旧键视为用户的选择。
-
 层级仅使用已注册的规范路径，不扫描项目，也不解析符号链接别名。嵌套不会改变 Session 的工作目录、日志或 Workspace 归属。删除父 Workspace 后，子 Workspace 仍保持注册，并归入下一个已注册祖先；没有祖先时显示在根层级。
 
 在不支持悬停的设备上，展开的 Workspace 行显示菜单和新建会话按钮，已归档的搜索结果始终显示取消归档按钮。
@@ -55,7 +55,7 @@ kind: "package-reference"
 
 搜索快捷键会先展开已关闭的侧栏，包括保留展开内容的抽屉，再聚焦搜索框。
 
-折叠搜索是视图和添加操作旁的一枚区头按钮：激活后输入框会扩展并占据区头。在展开的侧栏中打开或关闭搜索时，区头间距与输入框展开采用同步的 180 ms 过渡，减少动态效果模式下禁用。从折叠栏展开侧栏时，区头直接采用最终几何位置，同时保留内容淡入。折叠栏搜索会在展开侧栏前准备好输入框的打开状态，因此首个宽栏渲染就包含已展开的输入框。搜索标题即使被截断，也会在取消归档的点击区域前留出间距。非空白查询会以单一扁平结果列表替代任一浏览模式——不区分大小写的标题、Workspace 和 Session id 子串匹配项会立即显示，经 250 ms 防抖的 Host 请求则会加入经过排序的当前对话内容匹配项及其摘要片段。每次新查询都会中止前一个请求；内容搜索失败时，元数据匹配项仍会显示，不另给警告。列表最多显示 20 条结果。选择未归档结果会清空并收起搜索、打开 Session，并在当前浏览模式中将其行滚动到可见区域；分组浏览还会按需展开所属 Workspace 和完整 Session 列表。已归档结果提供取消归档操作；尝试打开时会说明限制，不清空查询，也不导航。
+折叠搜索是视图和添加操作旁的一枚区头按钮：激活后输入框会扩展并占据区头。在展开的侧栏中打开或关闭搜索时，区头间距与输入框展开采用同步的 180 ms 过渡，减少动态效果模式下禁用。从折叠栏展开侧栏时，区头直接采用最终几何位置，同时保留内容淡入。折叠栏搜索会在展开侧栏前准备好输入框的打开状态，因此首个宽栏渲染就包含已展开的输入框。搜索标题即使被截断，也会在取消归档的点击区域前留出间距。非空白查询会以单一扁平结果列表替代任一浏览模式——标题、Workspace 和 Session id 经共享[文本搜索](../../util/text-search/README.zh.md)得到的匹配项会立即显示，最佳匹配在前，经 250 ms 防抖的 Host 请求则会加入经过排序的当前对话内容匹配项及其摘要片段。每次新查询都会中止前一个请求；内容搜索失败时，元数据匹配项仍会显示，不另给警告。列表最多显示 20 条结果。选择未归档结果会清空并收起搜索、打开 Session，并在当前浏览模式中将其行滚动到可见区域；分组浏览还会按需展开所属 Workspace 和完整 Session 列表。已归档结果提供取消归档操作；尝试打开时会说明限制，不清空查询，也不导航。
 
 ### 管理会话
 
@@ -69,13 +69,13 @@ Session 行内的 Rename 操作打开一个以该行显示标题预填的对话�
 
 会话更新时间使用 tertiary 文本色，包括已归档行。标题宽于所在行时，静止状态以省略号裁切。把指针停在行上，标题会滚动到远端——例如 fork 递增后的标题——并在揭示时不显示省略号；指针离开后标题回到开头。
 
-快捷键速查提供新建会话、搜索会话、添加工作区、重命名会话、分叉会话和归档会话。桌面默认使用平台的主修饰键，搜索为 Mod+K；Windows 和 macOS Web 使用[快捷键服务的平台默认值](../shortcuts/README.zh.md)；Linux Web 在用户配置前不绑定这些命令。按钮提示和会话行菜单显示当前有效绑定。点击菜单项操作该行，按快捷键操作主会话。Desktop 和 Windows/macOS Web 的重命名均使用 Mod+Alt+G，将 Mod+Shift+R 留给浏览器刷新。导航抽屉允许这些命令，其他对话框遵循命令的模态限制。重命名要求主区域正在显示非空会话，且没有其他模态对话框遮挡；切换到其他主面板后，后台保留的会话不可作为重命名目标。其他 Windows 和 macOS Desktop 绑定也可从终端输入区域和模态对话框中执行；其他环境遵循命令的区域和模态限制。搜索和重命名的打开请求归本包管理，输入草稿保留在浏览器中。目录选择或工作区接纳尚未结束时，目录选择器拒绝重复打开。分叉捕获主视图已持有并发起历史打开的会话，保留自动迁移；它使用与行菜单相同的 Host 操作选择最近已完成轮次，不读取更早的 Client 历史。没有会话或会话为空时不可用；没有已完成轮次的源会话由 Host 拒绝。快捷键分叉被拒绝时保留当前选择、显示本地化提示，并允许重试；非预期失败还会保留诊断日志。该提示共用应用级 Workspace 通知通道：只显示最新提示，移除浏览区域不会关闭它。
+快捷键速查提供新建会话、搜索会话、添加工作区、重命名会话、分叉会话、归档会话和切换已读/未读。桌面默认使用平台的主修饰键，搜索为 Mod+K；Windows 和 macOS Web 使用[快捷键服务的平台默认值](../shortcuts/README.zh.md)；Linux Web 在用户配置前不绑定这些命令。按钮提示和会话行菜单显示当前有效绑定。点击菜单项操作该行，按快捷键操作主会话。Desktop 和 Windows/macOS Web 的重命名均使用 Mod+Alt+G，将 Mod+Shift+R 留给浏览器刷新。导航抽屉允许这些命令，其他对话框遵循命令的模态限制。重命名要求主区域正在显示非空会话，且没有其他模态对话框遮挡；切换到其他主面板后，后台保留的会话不可作为重命名目标。其他 Windows 和 macOS Desktop 绑定也可从终端输入区域和模态对话框中执行；其他环境遵循命令的区域和模态限制。搜索和重命名的打开请求归本包管理，输入草稿保留在浏览器中。目录选择或工作区接纳尚未结束时，目录选择器拒绝重复打开。分叉捕获主视图已持有并发起历史打开的会话，保留自动迁移；它使用与行菜单相同的 Host 操作选择最近已完成轮次，不读取更早的 Client 历史。没有会话或会话为空时不可用；没有已完成轮次的源会话由 Host 拒绝。快捷键分叉被拒绝时保留当前选择、显示本地化提示，并允许重试；非预期失败还会保留诊断日志。该提示共用应用级 Workspace 通知通道：只显示最新提示，移除浏览区域不会关闭它。
 
-Session 行菜单以“删除会话”结尾，确认后会永久删除该 Session 及其已存储的日志。Host 会拒绝删除活动中的 Session，对话框会就地显示该拒绝原因。
+切换已读/未读在 macOS 的 Desktop 和 Web 中使用 Command+Shift+U，在 Windows 使用 Control+Shift+U；Linux 默认不绑定，可自行配置。快捷键操作主区域显示的非空会话，要求阅读状态已同步且具有操作权限；切换到其他主面板或打开模态对话框时不可用。菜单操作始终针对所在行。成功修改及并发导致的过期请求都不弹提示，只有保存失败时显示 toast。
 
 ### 待处理交互
 
-Session 行渲染运行时的实时 `pendingInteraction` 分类：审批显示**等待审批**，计划审阅显示**计划待审**，普通问题显示**等待回答**。待处理交互显示黄色问号，并以**待批准**、**计划待审**或**待回答**替换尾部更新时间；悬停详情仍保留完整状态和相对时间。待处理交互优先于活动状态。在主视图之外停止的运行显示未读绿点；若运行期间观察到运行时错误，则显示红点。打开 Session 会清除提醒。这些实时提醒不会持久保存，重新连接后可能遗漏。Workspace、Folder 和 Group 图标即使折叠也反映未归档后代的提醒，优先级依次为待处理交互、错误和完成。idle 在行内不显示点，在悬停详情中使用共享 idle 灰点。行首 seat 仅在该行的主状态为 idle 时渲染——没有待处理交互、没有自身或后代活动、也没有未查看的完成提醒——因此该处的占用方不会与行自身的状态标识同时出现。归档行该格整体留空：既不显示标识也不挂 seat，其活动状态只出现在悬浮卡片上。
+Session 行渲染运行时的实时 `pendingInteraction` 分类：审批显示**等待审批**，计划审阅显示**计划待审**，普通问题显示**等待回答**。交互待处理期间，该行使用共享 warning 橙点，并以**待批准**、**计划待审**或**待回答**替换尾部更新时间；悬停详情仍保留完整状态和相对时间。待处理交互优先于共享 ongoing loading，后者优先于未读提醒。失败的轮次显示红点，其他结束的轮次（含主动取消）显示绿点。打开会话或标为已读会清除这两种提醒。标为未读不会改变标题字重或已有的待处理交互点。idle 在行内不显示点，在悬停详情中使用共享 idle 灰点。行首 seat 仅在该行的主状态为 idle 时渲染——没有待处理交互、没有自身或后代活动、也没有未查看的完成提醒——因此该处的占用方不会与行自身的状态点同时出现。归档行该格整体留空：既不显示状态点也不挂 seat，其活动状态只出现在悬浮卡片上。
 
 ### 活动 Schedule 标识
 
@@ -121,14 +121,48 @@ Session 行可通过 Tab 聚焦，使用不带修饰键的 Enter 或空格打开
 
 ### 目录流子 slot
 
-每个注册各自声明一个**目录流子 slot**（`single` kind：`conversation.hero.workspace.directoryFlow`／`sidebar.workspaces.directoryFlow`），由组合的选择器包 client half 填入其选取交互——`-native` 后端的无渲染 OS 选择器驱动，`-browse` 组合下则是应用内浏览对话框。平铺显示的**添加工作区…** 操作仅在当前界面的 slot 被占用时渲染；slot 为空意味着该组合没有目录选择能力。侧栏的添加工作区操作保留已有空白 Session 及其草稿。本包持有触发与接纳：占用方通过 slot 的属主交互约定（`open`/`busy`/`onPicked`/`onCancel`/`onError`）每次打开上报一个所选路径，owner 通过对象层接纳它，并等待 Workspace 列表投影刷新后才选中已提交的 Workspace。
+每个注册各自声明一个**目录流子 slot**（`single` kind：`conversation.hero.workspace.directoryFlow`／`sidebar.workspaces.directoryFlow`），`workspace.picker` Factory 则声明 `workspace.picker.directoryFlow`；组合的选择器包 client half 向这三处填入其选取交互——`-native` 后端的无渲染 OS 选择器驱动，`-browse` 组合下则是应用内浏览对话框。平铺显示的**添加工作区…** 操作仅在当前界面的 slot 被占用时渲染；slot 为空意味着该组合没有目录选择能力。侧栏的添加工作区操作保留已有空白 Session 及其草稿。本包持有触发与接纳：占用方通过 slot 的属主交互约定（`open`/`busy`/`onPicked`/`onCancel`/`onError`）每次打开上报一个所选路径，owner 通过对象层接纳它，并等待 Workspace 列表投影刷新后才选中已提交的 Workspace。
+
+### 可复用的 Workspace 选择器
+
+其他插件通过 root 作用域的 `workspace.picker` Component Factory 渲染 hero 的 Workspace 选择器，而不导入本包的组件。其调用方输入即 `ui-workspace/client` 中的 `WorkspacePickerInput` 类型，与 hero 的 owner props 相同：`open`、`anchorRef`、`selectedId`、`onPick` 与 `onClose`。调用方持有锚点控件、打开状态以及选中的含义，并在 `onPick` 中关闭菜单。每个实例列出现有 Workspace；当某个目录选择器包占用 `workspace.picker.directoryFlow` 时，还会显示**添加工作区…**，它运行该流程、调用 `workspaces.create({ path })`，并把新 Workspace 的 id 传给 `onPick`；接纳失败留在本包的文件夹错误对话框中。该定义及其子 slot 直接在 `apply` 中注册，因为它们不依赖其他声明，并随本插件一起卸载。
+
+调用方只需每个已注册组件都会收到的标准 `renderFactorySlot` prop，以及加载该 Factory 声明的纯类型 `ui-workspace/client` import；调用方自己的注册无需为此声明任何内容。未加载 ui-workspace 时，该调用渲染其可选的 `fallback`。菜单 portal 到 document body，并相对 `anchorRef` 定位，层级高于 primitives 的 `Modal`，因此实例可以渲染在调用方的对话框内。
+
+```tsx
+import { useRef, useState } from 'react'
+import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { PropsRenderFactories } from '@deepseek-ai/dsh-client-ui-slots'
+import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
+
+function WorkspaceField({ label, renderFactorySlot }: PropsRenderFactories & { label: string }) {
+  const anchorRef = useRef<HTMLButtonElement>(null)
+  const [open, setOpen] = useState(false)
+  const [workspaceId, setWorkspaceId] = useState<WorkspaceId | undefined>(undefined)
+  return (
+    <>
+      <button ref={anchorRef} type="button" onClick={() => { setOpen(value => !value) }}>{label}</button>
+      {renderFactorySlot('workspace.picker', {
+        open,
+        anchorRef,
+        selectedId: workspaceId,
+        onPick: (picked) => {
+          setOpen(false)
+          setWorkspaceId(picked)
+        },
+        onClose: () => { setOpen(false) },
+      })}
+    </>
+  )
+}
+```
 
 <a id="session-row-actions"></a>
 ### Session 行 action
 
-内置 Session 菜单动作通过 `ctx.contextMenus` 注册结构化贡献：置顶（100）、重命名（200）、分支（300）、复制 ID（450）和归档（600）。本机目录定位由 ui-open-in-app 提供（500）。重命名、分支和归档关联已有命令 ID，以显示实时快捷键；点击仍针对捕获的 Session 调用现有业务回调。置顶和归档同时保留悬停按钮 Slot 条目。
+内置 Session 菜单动作通过 `ctx.contextMenus` 注册结构化贡献：置顶（100）、重命名（200）、已读／未读（250）、分支（300）、复制 ID（450）和归档（600）。本机目录定位由 ui-open-in-app 提供（500）。重命名、已读／未读、分支和归档关联已有命令 ID，以显示实时快捷键；点击仍针对捕获的 Session 调用现有业务回调。置顶和归档同时保留悬停按钮 Slot 条目。
 
-旧 `sidebar.workspaces.session.menu.item` Slot 保留给外部 React 条目，提供 `sessionId`、`displayTitle` 和用于关闭菜单的 `useMenuOpenState`。旧条目保持彼此顺序，集中显示在归档之前；其 priority 不再替换内置数据动作。新贡献使用[菜单服务](../ui-context-menu/README.zh.md)。内置动作在菜单打开时持续响应权限和置顶／归档状态；对话框与提示仍为应用级浮层。
+旧 `sidebar.workspaces.session.menu.item` Slot 保留给外部 React 条目，提供 `sessionId`、`displayTitle` 和用于关闭菜单的 `useMenuOpenState`。旧条目保持彼此顺序，集中显示在归档之前；其 priority 不再替换内置数据动作。新贡献使用[菜单服务](../ui-context-menu/README.zh.md)。内置动作在菜单打开时持续响应权限和置顶／归档状态；阅读动作还会响应未读提醒和同步就绪状态。对话框与提示仍为应用级浮层。
 
 现有通知浮层按通知 kind 分派 `workspace.toast`。各 keyed 注册注入本地化展示映射与自己的操作，只有归档通知订阅查看筛选状态。它们渲染包内的 `workspace.toast.content` Factory，所有展示共用一处 Toast primitive。现有通知状态、显示序号、最新提示替换及关闭逻辑仍共享；语言或筛选变化不会重新启动同一条提示的计时。
 
@@ -255,6 +289,7 @@ Workspace 与 Session 悬浮卡片会复制对应行被截断的值：激活 Wor
 
 - **没有模糊内容搜索或事件深链接**：内容后端采用字面 token/短语匹配，选择结果会打开 Session，而不是匹配的事件。
 - **没有 Session 删除**：会话可以归档但绝不会被删除；已归档的行通过「已归档会话」视图筛选与搜索结果中的取消归档操作原位恢复，删除 Workspace 注册记录不会删除 Session。
+- **待处理的用户交互不会聚合到折叠的分组上**：折叠分组内正在等待的行不会点亮分组头指示，只有展开该分组后才可见。
 - **树形列表键盘导航尚不完整**：Workspace 行和搜索结果行不接受 Tab 聚焦，浏览器树形列表也未实现方向键导航。
 - **原生文件夹选择依赖本地 Host 载体**：在 `-native` 组合下，进程内部署或远程浏览器部署无法打开本地操作系统对话框；可远程的选取是 `-browse` 组合的应用内流程。
 

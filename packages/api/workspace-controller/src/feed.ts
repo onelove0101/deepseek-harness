@@ -1,6 +1,8 @@
 /** Reconnect-safe Workspace baseline and increment producer. */
 
 import type { Context } from '@deepseek-ai/cordis'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import { Deque } from '@deepseek-ai/dsh-deque'
 import type { DomainChanged } from '@deepseek-ai/dsh-storage-domain'
 import type {
@@ -15,7 +17,6 @@ import {
   workspaceGroupRecord,
   workspaceRecord,
   GroupId,
-  WorkspaceId,
 } from '@deepseek-ai/dsh-workspace'
 import type {
   WorkspaceBaseline,
@@ -91,7 +92,7 @@ export function workspaceLayout(registry: WorkspaceRegistry): WorkspaceLayout {
 function changedWorkspaceView(workspaceId: string, value: unknown): WorkspaceView {
   const record: WorkspaceRecord = workspaceRecord.parse(value)
   return {
-    workspaceId: WorkspaceId(workspaceId),
+    workspaceId: brandString<WorkspaceId>(workspaceId),
     path: record.path,
     title: record.title,
     sessionIds: [...record.sessionIds],
@@ -244,7 +245,7 @@ export class WorkspaceFeed {
     if (change.table !== 'workspaces') {
       return
     }
-    const workspaceId = WorkspaceId(change.key)
+    const workspaceId = brandString<WorkspaceId>(change.key)
     if (change.operation === 'deleted') {
       this.views.delete(workspaceId)
       if (this.announced.delete(workspaceId)) {

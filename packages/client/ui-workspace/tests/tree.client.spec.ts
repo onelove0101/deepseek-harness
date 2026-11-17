@@ -103,7 +103,7 @@ const noAttention: SessionStatusSnapshot = new Map()
 const status = (
   pendingInteraction: SessionPendingInteraction | undefined,
   overrides: Partial<SessionStatus> = {},
-): SessionStatus => ({ running: undefined, pendingInteraction, completionUnread: false, completionError: false, ...overrides })
+): SessionStatus => ({ running: undefined, pendingInteraction, completionUnread: false, completionFailed: false, ...overrides })
 const archived = (...ids: string[]): readonly SessionId[] => ids.map(sid)
 const rowState = (options: {
   pinned?: readonly string[]
@@ -387,21 +387,21 @@ describe('deriveGroups', () => {
     const failed = summary('failed', 1)
     const sessions = list(failed)
     const statuses: SessionStatusSnapshot = new Map([[failed.id, status(undefined, {
-      completionUnread: true, completionError: true,
+      completionUnread: true, completionFailed: true,
     })]])
     const groups = deriveGroups(sessions, [workspace('first', ['failed'])], noRows, statuses, view(['first']))
-    expect(groups[0]?.sessions[0]).toMatchObject({ completed: true, completionError: true })
+    expect(groups[0]?.sessions[0]).toMatchObject({ completed: true, failed: true })
     expect(groups[0]?.attention).toBe('error')
     expect(deriveSearchResults(sessions, [workspace('first', ['failed'])], 'failed', noArchive, 'default',
-      statuses, { items: [], hasMore: false }, 10).items[0]).toMatchObject({ completed: true, completionError: true })
+      statuses, { items: [], hasMore: false }, 10).items[0]).toMatchObject({ completed: true, failed: true })
   })
 
   it('aggregates collapsed workspace attention by priority and excludes archives', () => {
     const sessions = list(summary('waiting', 3), summary('failed', 2), summary('done', 1))
     const pending = { key: 'question:1', kind: 'question', sessionId: sid('waiting') } as SessionPendingInteraction
     const statuses: SessionStatusSnapshot = new Map([
-      [sid('waiting'), status(pending, { completionUnread: true, completionError: true })],
-      [sid('failed'), status(undefined, { completionUnread: true, completionError: true })],
+      [sid('waiting'), status(pending, { completionUnread: true, completionFailed: true })],
+      [sid('failed'), status(undefined, { completionUnread: true, completionFailed: true })],
       [sid('done'), status(undefined, { completionUnread: true })],
     ])
     const workspaces = [workspace('first', ['waiting', 'failed', 'done'])]
