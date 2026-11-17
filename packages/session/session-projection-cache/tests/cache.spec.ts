@@ -19,7 +19,7 @@ import { z } from 'zod'
 import SessionStore, {
   SESSION_FORMAT_VERSION,
   Session,
-  type SessionId,
+  SessionId,
   SessionLogOffset,
   SessionSeq,
 } from '@deepseek-ai/dsh-session'
