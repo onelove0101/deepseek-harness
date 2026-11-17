@@ -5,8 +5,10 @@ import { MemoryCredentials } from '../../../credentials/credentials/tests/memory
 import ConnectionsService from '../src/index.ts'
 import { GOOGLE_SHEETS_KEY, GOOGLE_SHEETS_ACCESS_REF } from '../src/connectors.ts'
 
+const mcpRegister = vi.fn(() => () => undefined)
+
 class MockMcpManager extends Service {
-  register = vi.fn(() => () => undefined)
+  register = mcpRegister
   constructor(ctx: Context) {
     super(ctx, 'mcpManager')
   }
@@ -20,14 +22,12 @@ describe('ConnectionsService', () => {
   async function harness(withGrant = false): Promise<{
     connections: ConnectionsService
     credentials: MemoryCredentials
-    mcpManager: MockMcpManager
   }> {
     const ctx = new Context()
     await ctx.plugin(MemoryCredentials)
     const credentials = ctx.get('credentials') as MemoryCredentials
     await ctx.plugin(AuthorizationService)
     await ctx.plugin(MockMcpManager).await()
-    const mcpManager = ctx.get('mcpManager') as MockMcpManager
     if (withGrant) {
       await credentials.modifyRecord(GOOGLE_SHEETS_KEY, async () => ({
         kind: 'grant',
@@ -37,7 +37,7 @@ describe('ConnectionsService', () => {
     const fiber = ctx.plugin(ConnectionsService, { googleOAuthClientId: 'client' })
     await fiber.await()
     const connections = ctx.get('connections') as ConnectionsService
-    return { connections, credentials, mcpManager }
+    return { connections, credentials }
   }
 
   it('lists google-sheets as disconnected by default', async () => {
@@ -46,8 +46,8 @@ describe('ConnectionsService', () => {
   })
 
   it('mounts MCP after a stored grant on init', async () => {
-    const { credentials, mcpManager } = await harness(true)
-    expect(mcpManager.register).toHaveBeenCalledWith('google-sheets', expect.objectContaining({ transport: 'streamable-http' }))
+    const { credentials } = await harness(true)
+    expect(mcpRegister).toHaveBeenCalledWith('google-sheets', expect.objectContaining({ transport: 'streamable-http' }))
     expect((await credentials.resolve(GOOGLE_SHEETS_ACCESS_REF))?.value).toBe('access-1')
   })
 
