@@ -278,7 +278,7 @@ describe('ui-expert browser plugin', () => {
 
     it('a pick replaces an existing leading mention of a listed Expert and keeps an unlisted one', async () => {
       const { b, flyout } = await open()
-      const reviewer = (await flyout.options(session, signal())).find(row => row.id === 'reviewer')!
+      const reviewer = (await flyout.options(session, signal())).find((row: { id: string }) => row.id === 'reviewer')!
       b.composer.draft = '@researcher fix the bug'
       await flyout.onSelect(reviewer, session)
       b.composer.draft = '@stranger fix the bug'
@@ -307,7 +307,7 @@ describe('ui-expert browser plugin', () => {
 
     it('keeps the response-local Expert catalog when another session opens a flyout', async () => {
       const { b, flyout } = await open()
-      const reviewer = (await flyout.options(session, signal())).find(row => row.id === 'reviewer')!
+      const reviewer = (await flyout.options(session, signal())).find((row: { id: string }) => row.id === 'reviewer')!
       b.ranked.mockResolvedValueOnce({
         ok: true,
         value: { experts: [{ id: 'id-other', name: 'other', soul: 'Other.' }] },
@@ -332,7 +332,7 @@ describe('ui-expert browser plugin', () => {
         ok: true,
         value: { experts: [{ id: 'id-researcher', name: 'researcher', soul: 'Research.' }, { id: 'id-reviewer', name: 'reviewer', soul: 'Review.' }] },
       })
-      const reviewer = (await second).find(row => row.id === 'reviewer')!
+      const reviewer = (await second).find((row: { id: string }) => row.id === 'reviewer')!
       resolveFirst({ ok: true, value: { experts: [{ id: 'id-other', name: 'other', soul: 'Other.' }] } })
       await first
       b.composer.draft = '@researcher fix the bug'
