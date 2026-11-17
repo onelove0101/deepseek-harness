@@ -1246,6 +1246,8 @@ export const pt = {
   'delete.workspace': 'Excluir espaço de trabalho',
   'delete.desc': 'Isso remove “{name}” da lista de espaços de trabalho. A pasta e os logs de sessão serão mantidos. Suas sessões aparecerão em Desagrupado.',
   'delete.pending': 'Excluindo espaço de trabalho…',
+  'menu.markRead': 'Marcar como lido',
+  'menu.markUnread': 'Marcar como não lido',
   'menu.fork': 'Bifurcar sessão',
   'menu.archiveSession': 'Sessão de arquivamento',
   'menu.unarchiveSession': 'Desarquivar sessão',
