@@ -284,11 +284,11 @@ export class WorkspaceCommands {
     return this.enqueue(async () => {
       try {
         await this.ctx.workspaceRegistry.moveToGroup(
-          WorkspaceId(request.workspaceId),
+          brandString<WorkspaceId>(request.workspaceId),
           request.groupId === undefined ? undefined : GroupId(request.groupId),
           request.beforeWorkspaceId === undefined || request.beforeWorkspaceId === null
             ? request.beforeWorkspaceId
-            : WorkspaceId(request.beforeWorkspaceId),
+            : brandString<WorkspaceId>(request.beforeWorkspaceId),
         )
       } catch (error) {
         throw mapGroupFailure(error)
