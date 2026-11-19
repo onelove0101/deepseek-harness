@@ -27,6 +27,7 @@ import type { ContextMenuTarget } from '@deepseek-ai/dsh-client-ui-context-menu/
 import type { WorkspaceBrowserProps } from '../contract/slots.ts'
 import { highestAttention, type AttentionState, type GroupNode, type SearchResultNode, type SessionNode } from '../tree.ts'
 import css from './Rows.module.css'
+import auroraCss from './RowsAurora.module.css'
 
 /** Sidebar-owned layout values needed by row copies mounted outside the sidebar. */
 const DRAG_PREVIEW_PROPERTIES = [
@@ -280,9 +281,9 @@ function UngroupedProjectRow(props: ProjectRowItemProps) {
 function RunningFolderIcon() {
   return (
     <svg className={css.runningFolder} viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true">
-      <rect className={clsx(css.flyingFile, css.flyingFileLeft)} x="5.5" y="5" width="3.5" height="4.5" rx="0.6" />
-      <rect className={clsx(css.flyingFile, css.flyingFileMid)} x="6.25" y="5" width="3.5" height="4.5" rx="0.6" />
-      <rect className={clsx(css.flyingFile, css.flyingFileRight)} x="7" y="5" width="3.5" height="4.5" rx="0.6" />
+      <rect className={clsx(css.flyingFile, auroraCss.fileStroke, css.flyingFileLeft)} x="5.5" y="5" width="3.5" height="4.5" rx="0.6" />
+      <rect className={clsx(css.flyingFile, auroraCss.fileStroke, css.flyingFileMid)} x="6.25" y="5" width="3.5" height="4.5" rx="0.6" />
+      <rect className={clsx(css.flyingFile, auroraCss.fileStroke, css.flyingFileRight)} x="7" y="5" width="3.5" height="4.5" rx="0.6" />
       <path
         d="M1.6 4.6a1 1 0 0 1 1-1h3.1l1.3 1.5h6.4a1 1 0 0 1 1 1v6.3a1 1 0 0 1-1 1H2.6a1 1 0 0 1-1-1z"
         stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"
@@ -590,17 +591,17 @@ function sessionStatuses(
     /* v8 ignore next -- closed PendingInteractionStatus union */
     default: return assertNever(node.pendingInteraction)
   }
-  if (pending !== undefined) return subagents === undefined ? [pending] : [pending, subagents]
+  const completion: SessionStatus = node.failed
+    ? { state: 'error', label: t('status.failed') }
+    : { state: 'done', label: t('status.unread') }
+  const unread: SessionStatus[] = node.completed ? [completion] : []
+  if (pending !== undefined) return subagents === undefined ? [pending, ...unread] : [pending, subagents, ...unread]
   if (node.running) {
     const primary: SessionStatus = { state: 'ongoing', label: t('status.running') }
-    return subagents === undefined ? [primary] : [primary, subagents]
+    return subagents === undefined ? [primary, ...unread] : [primary, subagents, ...unread]
   }
-  if (subagents !== undefined) return [subagents]
-  if (node.completed) {
-    return node.failed
-      ? [{ state: 'error', label: t('status.failed') }]
-      : [{ state: 'done', label: t('status.completed') }]
-  }
+  if (subagents !== undefined) return [subagents, ...unread]
+  if (node.completed) return [completion]
   return [{ state: 'idle', label: t('status.idle') }]
 }
 
@@ -641,10 +642,9 @@ function SessionHoverContent({ node, cwd, now, renderSlot, t }: {
   renderSlot: RowRenderSlots
   t: RowTranslate
 }) {
-  // On archived rows the archived line already says the session is inactive,
-  // so resting statuses (idle/completed) drop; live activity still shows.
-  const statuses = sessionStatuses(node, t)
-    .filter(status => !(node.archived && (status.state === 'done' || status.state === 'error' || status.state === 'idle')))
+  // Archived rows show live activity but suppress idle and unread reminders.
+  const statuses = sessionStatuses(node.archived ? { ...node, completed: false } : node, t)
+    .filter(status => !(node.archived && status.state === 'idle'))
   return (
     <div className={css.hoverContent}>
       <div className={css.hoverTitle}>{displayTitle(node, t)}</div>
@@ -832,6 +832,7 @@ export function SessionNodeItem({
         css.sessionRow, selected && css.selected, menuOpen && css.menuOpen,
         row.archived && css.archived,
         row.running && css.running,
+        row.running && auroraCss.aurora,
         drag?.marker === 'before' && css.dropBefore, drag?.marker === 'after' && css.dropAfter,
       )}
       role="treeitem"
@@ -875,8 +876,8 @@ export function SessionNodeItem({
         }}
     >
       {/* Pending interaction and own or descendant activity outrank the
-          finished-but-unviewed reminder, which returns after activity stops
-          and is cleared by opening the session. Archived rows keep the slot
+          unread reminder, which returns after activity stops
+          and clears after the visible content is acknowledged. Archived rows keep the slot
           blank — the grayed row carries the archived look — and their live
           status stays on the hover card only. */}
       <span className={css.slot}>

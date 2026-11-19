@@ -16,27 +16,29 @@
   gap: 16px;
   flex-wrap: wrap;
 }
-.heading { margin: 0; font-size: 24px; font-weight: 650; letter-spacing: -0.01em; }
+.heading { margin: 0; font-size: 24px; font-weight: 500; letter-spacing: -0.01em; }
 .sub { margin: 4px 0 0; font-size: 12px; opacity: 0.55; }
 .tools { display: flex; align-items: center; gap: 10px; }
 
 .search {
   width: 200px;
   padding: 7px 12px;
-  border: 1px solid rgba(128, 128, 128, 0.3);
+  border: 0.5px solid var(--dsw-alias-border-l3);
   border-radius: 999px;
-  background: rgba(128, 128, 128, 0.07);
+  corner-shape: round;
+  background: var(--dsw-alias-interactive-bg-hover);
   color: inherit;
   font: inherit;
   font-size: 13px;
   outline: none;
   transition: border-color 0.15s, background 0.15s;
 }
-.search:focus { border-color: rgba(0, 120, 255, 0.6); background: transparent; }
+.search:focus { border-color: var(--dsw-alias-border-selected); background: transparent; }
 
 .primaryBtn, .ghostBtn {
   padding: 7px 16px;
   border-radius: 999px;
+  corner-shape: round;
   font: inherit;
   font-size: 13px;
   cursor: pointer;
@@ -44,18 +46,16 @@
 }
 .primaryBtn {
   border: none;
-  background: #1f2937;
-  color: #fff;
-  font-weight: 600;
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-on-color);
+  font-weight: 500;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
-.primaryBtn:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25); }
 .ghostBtn {
-  border: 1px solid rgba(128, 128, 128, 0.35);
+  border: 0.5px solid var(--dsw-alias-border-l3);
   background: transparent;
   color: inherit;
 }
-.ghostBtn:hover { background: rgba(128, 128, 128, 0.12); }
 
 .segment {
   display: inline-flex;
@@ -63,7 +63,8 @@
   padding: 3px;
   gap: 2px;
   border-radius: 999px;
-  background: rgba(128, 128, 128, 0.14);
+  corner-shape: round;
+  background: var(--dsw-alias-interactive-bg-hover);
 }
 .segBtn {
   display: inline-flex;
@@ -72,6 +73,7 @@
   padding: 5px 14px;
   border: none;
   border-radius: 999px;
+  corner-shape: round;
   background: transparent;
   color: inherit;
   font: inherit;
@@ -80,12 +82,11 @@
   opacity: 0.7;
   transition: background 0.15s, opacity 0.15s;
 }
-.segBtn:hover { opacity: 1; }
 .segOn {
   opacity: 1;
-  background: #fff;
-  color: #111827;
-  font-weight: 600;
+  background: var(--dsw-alias-card-fill);
+  color: var(--dsw-alias-label-primary);
+  font-weight: 500;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
 }
 .count { font-size: 11px; opacity: 0.55; font-weight: 500; }
@@ -112,8 +113,8 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  border: 2px dashed rgba(128, 128, 128, 0.4);
-  border-radius: 6px;
+  border: 2px dashed var(--dsw-alias-border-l3);
+  border-radius: var(--dsw-radius-xl);
   background: transparent;
   color: inherit;
   font: inherit;
@@ -122,70 +123,38 @@
   cursor: pointer;
   transition: opacity 0.15s, border-color 0.15s, background 0.15s;
 }
-.addCard:hover { opacity: 1; border-color: rgba(0, 120, 255, 0.6); background: rgba(0, 120, 255, 0.05); }
 .plus { font-size: 22px; line-height: 1; }
 
 .card {
   position: relative;
   padding: 22px 18px 14px;
   cursor: pointer;
-  color: #2b2417;
   transform: rotate(var(--tilt, 0deg));
   transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-.card:hover { transform: rotate(0deg) translateY(-4px) scale(1.02); z-index: 2; }
-
-.sticky {
-  border-radius: 3px 3px 12px 3px;
-  background:
-    linear-gradient(160deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 55%),
-    var(--paper, #fde68a);
-  box-shadow:
-    0 1px 1px rgba(0, 0, 0, 0.12),
-    0 8px 14px -6px rgba(0, 0, 0, 0.28);
-}
-.sticky:hover {
-  box-shadow:
-    0 2px 2px rgba(0, 0, 0, 0.12),
-    0 16px 26px -8px rgba(0, 0, 0, 0.4);
-}
-/* Translucent strip of tape holding the note to the wall. */
-.tape {
-  position: absolute;
-  top: -9px;
-  left: 50%;
-  width: 62px;
-  height: 18px;
-  transform: translateX(-50%) rotate(-2deg);
-  background: rgba(255, 255, 255, 0.55);
-  border: 1px solid rgba(0, 0, 0, 0.05);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-  backdrop-filter: blur(1px);
 }
 
 .plain {
   padding-top: 16px;
-  border-radius: 10px;
-  border: 1px solid rgba(128, 128, 128, 0.3);
-  background: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.08));
-  color: inherit;
+  border-radius: var(--dsw-radius-xl);
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  background: var(--dsw-alias-interactive-bg-hover);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
-.plain:hover { box-shadow: 0 10px 20px -8px rgba(0, 0, 0, 0.3); }
 
 .kindTag {
   display: inline-block;
   margin-bottom: 6px;
   padding: 1px 8px;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.08);
+  corner-shape: round;
+  background: var(--dsw-alias-interactive-bg-hover);
   font-size: 10px;
   letter-spacing: 0.04em;
 }
 .cardTitle {
   margin: 0 0 6px;
   font-size: 15px;
-  font-weight: 650;
+  font-weight: 500;
   line-height: 1.35;
   word-break: break-word;
 }
@@ -210,17 +179,16 @@
   padding: 2px 8px;
   border: none;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.08);
+  corner-shape: round;
+  background: var(--dsw-alias-interactive-bg-hover);
   color: inherit;
   font-size: 11px;
   cursor: pointer;
   opacity: 0;
   transition: opacity 0.15s, background 0.15s;
 }
-.card:hover .del, .del:focus-visible { opacity: 1; }
-.del:hover { background: rgba(0, 0, 0, 0.18); }
-.delConfirm { opacity: 1; background: #dc2626; color: #fff; }
-.delConfirm:hover { background: #b91c1c; }
+.del:focus-visible { opacity: 1; }
+.delConfirm { opacity: 1; background: var(--dsw-alias-state-error-primary); color: var(--dsw-alias-label-on-color); }
 
 .empty { text-align: center; padding: 48px 0; opacity: 0.5; font-size: 14px; }
 
@@ -231,32 +199,12 @@
   gap: 14px;
   max-width: 720px;
   padding: 22px 24px 18px;
-  border: 1px solid rgba(128, 128, 128, 0.3);
-  border-radius: 12px;
-  background: rgba(128, 128, 128, 0.06);
-}
-.editorPaper {
-  border: none;
-  border-radius: 4px 4px 16px 4px;
-  color: #2b2417;
-  background:
-    linear-gradient(160deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 55%),
-    var(--paper);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15), 0 18px 30px -12px rgba(0, 0, 0, 0.4);
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-alias-interactive-bg-hover);
 }
 .editorTop { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .swatches { display: flex; gap: 8px; }
-.swatch {
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.8);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
-  cursor: pointer;
-  transition: transform 0.15s;
-}
-.swatch:hover { transform: scale(1.15); }
 .swatchOn { box-shadow: 0 0 0 2px #1f2937; }
 .titleInput, .bodyInput {
   width: 100%;
@@ -267,14 +215,34 @@
   color: inherit;
   font: inherit;
 }
-.titleInput { font-size: 20px; font-weight: 650; padding: 4px 0; border-bottom: 1px solid rgba(0, 0, 0, 0.12); }
+.titleInput { font-size: 20px; font-weight: 500; padding: 4px 0; border-bottom: 0.5px solid var(--dsw-alias-border-l3); }
 .bodyInput { min-height: 260px; resize: vertical; font-size: 14px; line-height: 1.7; }
 .titleInput::placeholder, .bodyInput::placeholder { color: inherit; opacity: 0.4; }
 .editorFoot { display: flex; align-items: center; justify-content: space-between; }
 .hint { font-size: 11px; opacity: 0.5; }
 .editorBtns { display: flex; gap: 8px; }
 
+@media (hover: hover) {
+  .primaryBtn:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25); }
+  .ghostBtn:hover { background: var(--dsw-alias-interactive-bg-hover); }
+  .segBtn:hover { opacity: 1; }
+  .addCard:hover {
+    opacity: 1;
+    border-color: var(--dsw-alias-border-selected);
+    background: var(--dsw-alias-interactive-bg-hover-accent);
+  }
+  .plain:hover { box-shadow: 0 10px 20px -8px rgba(0, 0, 0, 0.3); }
+  .card:hover .del { opacity: 1; }
+  .del:hover { background: var(--dsw-alias-interactive-bg-active); }
+  .delConfirm:hover { filter: brightness(0.88); }
+}
+
+/* The lift-and-straighten reads as motion, so reduced motion removes the
+   transform rather than only its transition. */
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .card:hover { transform: rotate(0deg) translateY(-4px) scale(1.02); z-index: 2; }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .card, .primaryBtn, .swatch { transition: none; }
-  .card:hover { transform: none; }
+  .card, .primaryBtn { transition: none; }
 }

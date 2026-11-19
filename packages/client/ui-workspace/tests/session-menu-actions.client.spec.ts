@@ -89,6 +89,7 @@ it('reacts to permission and locale updates, prevents withdrawn actions, and dis
   b.access('workspace/archiveSession').set(false)
   b.access('workspace/pinSession').set(false)
   b.access('session/deleteSession').set(false)
+  b.access('sessionStatus/mark').set(false)
   expect(menu.source.getSnapshot().map(item => item.id)).toEqual(['session.id/copy'])
   menu.select('session.rename/rename')
   expect(b.actions.requestSessionRename).not.toHaveBeenCalled()

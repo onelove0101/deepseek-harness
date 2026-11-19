@@ -5,6 +5,10 @@
   "ui-deliverables/src/client/Deliverables.module.css": [
     ".fileIcon: border-radius: 10px"
   ],
+  "ui-notes/src/client/NotesPaper.module.css": [
+    ".sticky: border-radius: 3px 3px 12px 3px",
+    ".editorPaper: border-radius: 4px 4px 16px 4px"
+  ],
   "ui-plan/src/client/PlanPreview.module.css": [
     ".cardIcon: border-radius: 10px"
   ],

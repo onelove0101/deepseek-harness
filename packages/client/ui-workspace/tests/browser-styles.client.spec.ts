@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest'
 
 const css = readFileSync(fileURLToPath(new URL('../src/client/rows/WorkspaceBrowser.module.css', import.meta.url)), 'utf8')
 const rowsCss = readFileSync(fileURLToPath(new URL('../src/client/rows/Rows.module.css', import.meta.url)), 'utf8')
+const auroraCss = readFileSync(fileURLToPath(new URL('../src/client/rows/RowsAurora.module.css', import.meta.url)), 'utf8')
 
 /**
  * Declarations of one selector rule, keyed by property with whitespace collapsed.
@@ -32,6 +33,7 @@ function declarationsFrom(source: string, selector: string): Map<string, string>
 
 const declarations = (selector: string): Map<string, string> | undefined => declarationsFrom(css, selector)
 const rowDeclarations = (selector: string): Map<string, string> | undefined => declarationsFrom(rowsCss, selector)
+const auroraDeclarations = (selector: string): Map<string, string> | undefined => declarationsFrom(auroraCss, selector)
 
 describe('WorkspaceBrowser.module.css list', () => {
   it('hides touch timestamps without hiding pending-interaction labels', () => {
@@ -216,11 +218,13 @@ describe('Rows.module.css running-session aurora border', () => {
     expect(frame?.get('position')).toBe('absolute')
     expect(frame?.get('inset')).toBe('0')
     expect(frame?.get('padding')).toBe('1px')
-    // The violet highlight travels a mostly transparent ring.
-    expect(frame?.get('background')).toContain('conic-gradient(')
-    expect(frame?.get('background')).toContain('from var(--dsh-session-row-aurora-angle)')
-    expect(frame?.get('background')).toContain('rgb(168, 130, 255)')
-    expect(frame?.get('background')).toContain('rgb(88, 60, 160)')
+    // The violet highlight travels a mostly transparent ring; its palette is
+    // owned artwork, painted by the exempted aurora sheet over the same pseudo.
+    const palette = auroraDeclarations('.aurora::before')
+    expect(palette?.get('background')).toContain('conic-gradient(')
+    expect(palette?.get('background')).toContain('from var(--dsh-session-row-aurora-angle)')
+    expect(palette?.get('background')).toContain('rgb(168, 130, 255)')
+    expect(palette?.get('background')).toContain('rgb(88, 60, 160)')
     // Only the 1px frame stays visible; the row interior is masked out.
     expect(frame?.get('mask')).toContain('content-box')
     expect(frame?.get('mask-composite')).toBe('exclude')

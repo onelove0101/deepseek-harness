@@ -8,6 +8,9 @@ import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import styles from './NotesPanel.module.css'
+// Paper artwork (sheets, tape, swatches) owns its theme-constant palette;
+// import order keeps its rules after the chrome sheet in the cascade.
+import paperStyles from './NotesPaper.module.css'
 
 type Kind = 'note' | 'sticky'
 
@@ -165,7 +168,7 @@ export function NotesPanel(_props: PropsRuntime<'main'>): ReactNode {
           <button type="button" className={styles.ghostBtn} onClick={closeEditor}>返回</button>
         </div>
         <div
-          className={`${styles.editor} ${paper ? styles.editorPaper : ''}`}
+          className={`${styles.editor} ${paper ? paperStyles.editorPaper : ''}`}
           style={paper ? ({ '--paper': paper } as CSSProperties) : undefined}
         >
           <div className={styles.editorTop}>
@@ -191,7 +194,7 @@ export function NotesPanel(_props: PropsRuntime<'main'>): ReactNode {
                     type="button"
                     aria-label={c.label}
                     title={c.label}
-                    className={`${styles.swatch} ${f.color === c.value ? styles.swatchOn : ''}`}
+                    className={`${paperStyles.swatch} ${f.color === c.value ? styles.swatchOn : ''}`}
                     style={{ background: c.value }}
                     onClick={() => setFields({ color: c.value })}
                   />
@@ -276,12 +279,12 @@ export function NotesPanel(_props: PropsRuntime<'main'>): ReactNode {
           return (
             <article
               key={n.id}
-              className={`${styles.card} ${sticky ? styles.sticky : styles.plain}`}
+              className={`${styles.card} ${sticky ? paperStyles.sticky : styles.plain}`}
               style={style}
               onClick={() => beginEdit(n)}
               onMouseLeave={() => confirmId === n.id && setConfirmId(null)}
             >
-              {sticky && <span className={styles.tape} aria-hidden="true" />}
+              {sticky && <span className={paperStyles.tape} aria-hidden="true" />}
               <button
                 type="button"
                 className={`${styles.del} ${confirmId === n.id ? styles.delConfirm : ''}`}

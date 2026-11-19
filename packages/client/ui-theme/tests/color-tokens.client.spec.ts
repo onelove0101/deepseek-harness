@@ -11,6 +11,8 @@ const EXEMPT_FILES: Record<string, string> = {
   'packages/client/ui-primitives/src/FileTypeIcon.module.css': 'file-type artwork palette',
   'packages/client/ui-primitives/src/FileTypeIcon.tsx': 'file-type artwork palette',
   'packages/client/ui-primitives/src/ansi.ts': 'ANSI SGR palette mapping',
+  'packages/client/ui-notes/src/client/NotesPaper.module.css': 'sticky-note paper artwork palette',
+  'packages/client/ui-workspace/src/client/rows/RowsAurora.module.css': 'running-activity aurora artwork palette',
   'packages/client/web/src/boot-page.module.css': 'boot page paints before ui-theme loads',
   'packages/client/web/src/base.css': 'shell fallbacks before ui-theme loads',
 }

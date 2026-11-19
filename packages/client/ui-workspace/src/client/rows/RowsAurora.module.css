@@ -1,0 +1,19 @@
+/* Running-activity artwork: the violet aurora edge and flying-page strokes
+   are owned illustration colors, exempt from the alias-token scan. Geometry
+   and motion stay in Rows.module.css; this sheet paints only the palette. */
+
+/* Gradient stop colors of the running row's traveling aurora border. */
+.aurora::before {
+  background: conic-gradient(
+    from var(--dsh-session-row-aurora-angle),
+    transparent 0deg,
+    rgb(88, 60, 160) 55deg,
+    rgb(168, 130, 255) 105deg,
+    rgb(88, 60, 160) 155deg,
+    transparent 210deg,
+    transparent 360deg
+  );
+}
+
+/* Violet stroke of the Session pages flying out of a running header's folder. */
+.fileStroke { stroke: rgb(168, 130, 255); }

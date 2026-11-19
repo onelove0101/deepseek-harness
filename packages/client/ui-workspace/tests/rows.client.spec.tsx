@@ -364,7 +364,7 @@ describe('workspace browser rows', () => {
 
   it.each([
     ['failed completion', { completed: true, failed: true }, 'error', 'Run failed'],
-    ['unread stop without an observed error', { completed: true, failed: false }, 'done', 'Completed'],
+    ['unread stop without an observed error', { completed: true }, 'done', 'Unread'],
     ['running before failure', { running: true, completed: true, failed: true }, 'ongoing', 'Running'],
     ['subagent before failure', { runningSubagentCount: 1, completed: true, failed: true }, 'ongoing', '1 subagent running'],
   ] as const)('renders %s consistently in session and search rows', (_name, overrides, state, label) => {
@@ -679,14 +679,17 @@ describe('workspace browser rows', () => {
   })
 
   it.each(['approval', 'plan-review', 'question'] as const)(
-    'keeps the yellow %s dot when the session is unread', (pendingInteraction) => {
+    'keeps the %s icon and announces the unread failure', (pendingInteraction) => {
       render(<SessionNodeItem node={{
         id: sid('unread-pending'), title: 'Pending', blank: false, running: false,
         runningSubagentCount: 0, completed: true, failed: true, updatedAt: 0, pinned: false, archived: false, pendingInteraction,
       }} currentId={undefined} now={0} onOpen={vi.fn()} t={t} />)
       const row = screen.getByRole('treeitem')
-      expect(row.querySelector('[data-state="warning"]')).not.toBeNull()
-      expect(row.querySelector('[data-state="done"]')).toBeNull()
+      // Pending keeps the row's question icon; the unread failure coexists as
+      // its screen-reader label instead of a second dot.
+      expect(row.querySelector('[data-icon="dsw-icon-question-outline-regular"]')).not.toBeNull()
+      expect(row.querySelector('[data-state]')).toBeNull()
+      expect(screen.getByText('运行出错')).toBeTruthy()
     },
   )
 

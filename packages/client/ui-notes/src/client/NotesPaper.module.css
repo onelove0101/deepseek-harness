@@ -1,0 +1,67 @@
+/* Sticky-note paper artwork: pastel sheets, sheen, tape, and ink stay
+   constant in both app themes, so this sheet owns its illustration palette
+   (color-gate exempt, like FileTypeIcon). Theme-tracked chrome lives in
+   NotesPanel.module.css. */
+
+/* One folded corner (sharp bottom-left) draws the sheet; the radius
+   exception record pins this package-owned geometry. */
+.sticky {
+  border-radius: 3px 3px 12px 3px;
+  color: #2b2417;
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 55%),
+    var(--paper, #fde68a);
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.12),
+    0 8px 14px -6px rgba(0, 0, 0, 0.28);
+}
+
+/* Translucent strip of tape holding the note to the wall. */
+.tape {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  width: 62px;
+  height: 18px;
+  transform: translateX(-50%) rotate(-2deg);
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(1px);
+}
+
+.editorPaper {
+  border: none;
+  border-radius: 4px 4px 16px 4px;
+  color: #2b2417;
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 55%),
+    var(--paper);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15), 0 18px 30px -12px rgba(0, 0, 0, 0.4);
+}
+
+.swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  corner-shape: round;
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+@media (hover: hover) {
+  .sticky:hover {
+    box-shadow:
+      0 2px 2px rgba(0, 0, 0, 0.12),
+      0 16px 26px -8px rgba(0, 0, 0, 0.4);
+  }
+
+  .swatch:hover { transform: scale(1.15); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .swatch { transition: none; }
+}
